@@ -1,0 +1,110 @@
+# Taskmaster vertical config pack — Dental Clinic
+key: dental_clinic
+display_name: "Dental Clinic Front Desk"
+business_description: >
+  Front-desk intake for a general dentistry practice handling appointment requests, pain/
+  emergency triage, insurance questions, and rescheduling.
+
+issue_types:
+  - name: appointment_request
+    description: New patient or routine appointment requests (cleanings, checkups, procedures).
+    examples:
+      - "I'd like to book my 6-month cleaning"
+      - "New patient here, can I get a first appointment?"
+  - name: pain_or_emergency
+    description: Active tooth or gum pain, swelling, or dental trauma.
+    examples:
+      - "I have a bad toothache since last night"
+      - "My tooth got knocked out an hour ago"
+      - "My face is swollen and it hurts to open my mouth"
+  - name: insurance_question
+    description: Coverage, billing, claims, and payment questions.
+    examples:
+      - "Do you accept my insurance?"
+      - "Why was I billed for last month's cleaning?"
+  - name: reschedule_cancel
+    description: Requests to move or cancel an existing appointment.
+    examples:
+      - "I need to reschedule this week's appointment"
+      - "Can I cancel my Friday visit?"
+  - name: other
+    description: General questions not covered by the categories above.
+    examples:
+      - "What are your holiday hours?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: Active severe pain, facial swelling, uncontrolled bleeding, or dental trauma.
+    concrete_examples:
+      - "My tooth got knocked out an hour ago"
+      - "My face is swollen and I can't open my mouth"
+      - "I'm bleeding and it won't stop"
+  - level: HIGH
+    definition: Significant pain or a broken/chipped tooth without a clear emergency.
+    concrete_examples:
+      - "I have a bad toothache since last night"
+      - "A filling fell out and it hurts to eat"
+  - level: MEDIUM
+    definition: Mild discomfort, or a time-sensitive scheduling need.
+    concrete_examples:
+      - "Mild sensitivity to cold, nothing urgent"
+      - "Need to reschedule this week's appointment"
+  - level: LOW
+    definition: Routine scheduling or informational questions.
+    concrete_examples:
+      - "I'd like to book my 6-month cleaning"
+      - "Do you accept my insurance?"
+
+required_entities:
+  - name: symptom_description
+    description: What the patient is experiencing, in their own words.
+  - name: pain_level
+    description: Self-reported pain severity (e.g. 1-10 scale or descriptive terms).
+  - name: onset_time
+    description: When the symptom or issue started.
+  - name: insurance_provider
+    description: The patient's insurance provider, if relevant to the request.
+
+appointment_types:
+  - name: emergency_visit
+    duration_minutes: 45
+    requires_onsite: true
+    triggers_when: CRITICAL or HIGH urgency pain/trauma requests.
+  - name: routine_cleaning
+    duration_minutes: 60
+    requires_onsite: true
+    triggers_when: Routine checkup or cleaning appointment requests.
+  - name: consultation
+    duration_minutes: 30
+    requires_onsite: true
+    triggers_when: New patient intake or procedure consultation requests.
+
+reply_tone: >
+  Warm and reassuring, avoid clinical jargon — many patients are anxious about dental visits.
+
+business_hours:
+  monday: {open: "08:00", close: "18:00"}
+  tuesday: {open: "08:00", close: "18:00"}
+  wednesday: {open: "08:00", close: "18:00"}
+  thursday: {open: "08:00", close: "18:00"}
+  friday: {open: "08:00", close: "18:00"}
+  saturday: {open: "09:00", close: "13:00"}
+  sunday: {open: null, close: null}
+
+timezone: "America/Chicago"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 10, resolution_hours: 2}
+  HIGH: {first_response_minutes: 30, resolution_hours: 24}
+  MEDIUM: {first_response_minutes: 120, resolution_hours: 48}
+  LOW: {first_response_minutes: 480, resolution_hours: 120}
+
+routing_table:
+  - {issue_type: pain_or_emergency, urgency: CRITICAL, assignee_role: on_call_dentist}
+  - {issue_type: pain_or_emergency, assignee_role: dental_hygienist_triage}
+  - {issue_type: appointment_request, assignee_role: front_desk_scheduler}
+  - {issue_type: insurance_question, assignee_role: billing_coordinator}
+  - {issue_type: reschedule_cancel, assignee_role: front_desk_scheduler}
+  - {issue_type: other, assignee_role: front_desk_scheduler}
+
+default_assignee_role: front_desk_scheduler

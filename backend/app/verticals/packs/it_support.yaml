@@ -1,0 +1,110 @@
+# Taskmaster vertical config pack — IT Support / MSP (flagship/demo vertical)
+key: it_support
+display_name: "IT Support & MSP"
+business_description: >
+  Managed IT support desk handling infrastructure, hardware, software, and security issues
+  for small-to-mid size business clients.
+
+issue_types:
+  - name: network
+    description: Connectivity, VPN, wifi, internet outages, DNS/routing issues.
+    examples:
+      - "Office wifi is down"
+      - "Can't connect to VPN from home"
+      - "Internet keeps dropping every few minutes"
+  - name: hardware
+    description: Physical device failures — printers, laptops, servers, peripherals.
+    examples:
+      - "Printer won't turn on"
+      - "Laptop screen is cracked"
+      - "Server fan is making a loud noise"
+  - name: software
+    description: Application errors, installs, licensing, and OS issues.
+    examples:
+      - "Excel crashes every time I open it"
+      - "Need Adobe license activated for a new hire"
+      - "Windows update is stuck at 40%"
+  - name: security
+    description: Suspected breaches, phishing, malware, account lockouts, access issues.
+    examples:
+      - "Got a phishing email asking for my password"
+      - "Locked out of the admin account"
+      - "Antivirus flagged a file and quarantined it"
+  - name: other
+    description: General IT questions or requests that don't fit the categories above.
+    examples:
+      - "Do we need to upgrade our Office license this year?"
+      - "Can you set up a laptop for a new employee starting Monday?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: Business-down. Multiple users or an entire site cannot work.
+    concrete_examples:
+      - "Entire office has no internet"
+      - "Main file server is offline"
+      - "Point-of-sale system is down during business hours"
+  - level: HIGH
+    definition: A single critical system or a VIP user is blocked with no workaround.
+    concrete_examples:
+      - "CEO's laptop won't boot before a client meeting"
+      - "Accounting software is down during month-end close"
+  - level: MEDIUM
+    definition: Impacts one person's productivity, but a workaround exists.
+    concrete_examples:
+      - "One user's email is slow to sync"
+      - "A single printer is offline but others are available"
+  - level: LOW
+    definition: Minor annoyance or a general question with no immediate impact.
+    concrete_examples:
+      - "Question about a software license renewal"
+      - "Request to add a bookmark to a shared browser profile"
+
+required_entities:
+  - name: device_type
+    description: The type of device or system affected (e.g. laptop, server, printer, router).
+  - name: affected_user_count
+    description: How many people are impacted — one person, a department, or the whole site.
+  - name: error_message
+    description: Any exact error text, code, or message the customer saw, if mentioned.
+
+appointment_types:
+  - name: remote_session
+    duration_minutes: 30
+    requires_onsite: false
+    triggers_when: Issue can likely be resolved via screen share or remote access.
+  - name: onsite_visit
+    duration_minutes: 90
+    requires_onsite: true
+    triggers_when: Hardware replacement, network wiring, or physical access is required.
+
+reply_tone: >
+  Technical but plain-English — explain what's being done without jargon, stay calm and
+  competent even when the customer is frustrated.
+
+business_hours:
+  monday: {open: "09:00", close: "17:00"}
+  tuesday: {open: "09:00", close: "17:00"}
+  wednesday: {open: "09:00", close: "17:00"}
+  thursday: {open: "09:00", close: "17:00"}
+  friday: {open: "09:00", close: "17:00"}
+  saturday: {open: null, close: null}
+  sunday: {open: null, close: null}
+
+timezone: "America/New_York"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 15, resolution_hours: 4}
+  HIGH: {first_response_minutes: 60, resolution_hours: 8}
+  MEDIUM: {first_response_minutes: 240, resolution_hours: 24}
+  LOW: {first_response_minutes: 480, resolution_hours: 72}
+
+routing_table:
+  - {issue_type: network, urgency: CRITICAL, assignee_role: senior_network_engineer}
+  - {issue_type: network, assignee_role: network_technician}
+  - {issue_type: hardware, assignee_role: field_technician}
+  - {issue_type: software, assignee_role: helpdesk_technician}
+  - {issue_type: security, urgency: CRITICAL, assignee_role: security_lead}
+  - {issue_type: security, assignee_role: helpdesk_technician}
+  - {issue_type: other, assignee_role: helpdesk_technician}
+
+default_assignee_role: helpdesk_technician

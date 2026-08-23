@@ -70,22 +70,26 @@ Target architecture for `backend/`, reflecting the 5-agent pipeline and vertical
 ```
 backend/
 ├── Dockerfile
-├── requirements.txt
-├── src/
+├── pyproject.toml
+├── app/
 │   ├── main.py                          # FastAPI app instantiation & route registration
 │   ├── config.py                        # pydantic-settings: env vars, credentials, no literals elsewhere
 │   │
 │   ├── core/                            # cross-cutting infra, no business logic
-│   │   ├── logging.py                   # structured logging + per-agent-stage elapsed-time logging
+│   │   ├── timing.py                    # timed_stage async context manager + in-memory event bus (built)
 │   │   ├── retry.py                     # timeout + retry decorator/wrapper for all external calls
 │   │   └── errors.py                    # shared exception types
 │   │
-│   ├── schemas/                         # Pydantic v2 models — every boundary-crossing structure
-│   │   ├── intake.py                    # IntakeMessage (unified schema from all channels)
-│   │   ├── classification.py            # ClassificationResult (issue_type, urgency, entities, confidence...)
-│   │   ├── ticket.py                    # Ticket, TicketStatus, TicketPriority
+│   ├── models/                          # Pydantic v2 models — the contract between all 5 agents (built)
+│   │   ├── base.py                      # TaskmasterModel: shared config (extra="forbid", etc.)
+│   │   ├── enums.py                     # Channel, Urgency, TicketStatus, Sentiment, AppointmentStatus
+│   │   ├── common.py                    # Sender, Attachment, issue_type taxonomy validator
+│   │   ├── message.py                   # NormalizedMessage (unified schema from all channels)
+│   │   ├── classification.py            # Classification (issue_type, urgency, entities, confidence...)
+│   │   ├── ticket.py                    # Ticket, TicketHistoryEntry (priority reuses Urgency)
 │   │   ├── reply.py                     # ReplyDraft
-│   │   └── scheduling.py                # AppointmentSlot, SchedulingResult
+│   │   ├── appointment.py               # Appointment, TimeSlot
+│   │   └── pipeline.py                  # PipelineState, StageTiming, PipelineEvent, PipelineErrorEntry
 │   │
 │   ├── verticals/                       # THE config layer — "add a vertical" happens only here
 │   │   ├── models.py                    # VerticalConfig pydantic schema (taxonomy, urgency rules, tone, appointment types)
@@ -104,7 +108,7 @@ backend/
 │   │   ├── reply_agent.py               # tone/language-matched customer reply drafting
 │   │   └── scheduler_agent.py           # appointment decision + Calendar booking
 │   │
-│   ├── channels/                        # per-channel ingestion adapters -> IntakeMessage
+│   ├── channels/                        # per-channel ingestion adapters -> NormalizedMessage
 │   │   ├── base.py                      # Channel interface/protocol
 │   │   ├── email_gmail.py
 │   │   ├── sms_twilio.py
@@ -119,9 +123,10 @@ backend/
 │   │   ├── gmail_client.py
 │   │   └── twilio_client.py
 │   │
-│   ├── services/                        # persistence & domain services above raw clients
-│   │   ├── ticket_store.py              # Firestore CRUD for tickets
-│   │   └── customer_history.py          # cross-ticket customer lookup
+│   ├── services/                        # persistence layer (built)
+│   │   ├── repository.py                # TicketRepository interface, get_repository(), TicketPage, errors
+│   │   ├── firestore_repo.py            # FirestoreRepo: real Firestore, transactional ticket numbers
+│   │   └── in_memory_repo.py            # InMemoryRepo: same interface, selected when ENV=local
 │   │
 │   └── api/
 │       ├── deps.py                      # FastAPI dependency injection (settings, clients, active vertical)
@@ -145,8 +150,10 @@ backend/
 
 ### Structural rules this layout enforces
 
-- **`verticals/`** is the only place taxonomy, urgency rules, tone, and appointment types may live. If an agent file references `"IT"`, `"printer"`, `"server down"`, or any other IT-specific literal, that's a bug — it belongs in `verticals/packs/it_support.yaml`.
-- **`agents/`** files depend on `schemas/` and `verticals/`, never on a specific `channels/` or `integrations/` implementation directly — call through the client wrappers so external SDKs stay swappable and mockable in tests.
-- **`channels/`** only normalizes into `schemas.intake.IntakeMessage`. No classification, ticketing, or reply logic belongs here.
+- **`verticals/`** is the only place taxonomy, urgency rules, tone, and appointment types may live. If an agent file references `"IT"`, `"printer"`, `"server down"`, or any other IT-specific literal, that's a bug — it belongs in `verticals/packs/it_support.yaml`. `models.classification.Classification.issue_type` and `models.ticket.Ticket.issue_type` enforce this at runtime via a Pydantic validation-context check (`validate_issue_type` in `models/common.py`) — no taxonomy data lives in `models/` itself.
+- **`agents/`** files depend on `models/` and `verticals/`, never on a specific `channels/` or `integrations/` implementation directly — call through the client wrappers so external SDKs stay swappable and mockable in tests.
+- **No agent touches the Firestore SDK directly.** Persistence goes through `services.repository.TicketRepository` (via `get_repository()`), never `FirestoreRepo`/`InMemoryRepo` by name — that's what lets the whole pipeline and its tests run with zero GCP credentials when `ENV=local`.
+- **`channels/`** only normalizes into `models.message.NormalizedMessage`. No classification, ticketing, or reply logic belongs here.
 - **`integrations/`** holds all timeout/retry/structured-logging wrapping (per the engineering rules above) so `agents/` code stays free of boilerplate.
-- Every file under `agents/` logs its own elapsed time via `core/logging.py` — this is what makes the sub-30-second claim measurable end to end.
+- Every file under `agents/` logs its own elapsed time via `core/timing.py`'s `timed_stage` — this is what makes the sub-30-second claim measurable end to end.
+- Every model in `models/` inherits `TaskmasterModel` (`extra="forbid"`) — a stray or typo'd field from an agent fails validation loudly instead of silently passing through to the next stage.

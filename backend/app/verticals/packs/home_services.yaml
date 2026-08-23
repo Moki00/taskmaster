@@ -1,0 +1,111 @@
+# Taskmaster vertical config pack — Home Services (plumbing, HVAC, electrical)
+key: home_services
+display_name: "Home Services (Plumbing, HVAC, Electrical)"
+business_description: >
+  Dispatch intake for a residential home services company covering plumbing, HVAC, and
+  electrical work.
+
+issue_types:
+  - name: plumbing
+    description: Leaks, clogs, water heater issues, pipe damage.
+    examples:
+      - "Water is pouring out from under the kitchen sink"
+      - "The upstairs toilet is completely clogged"
+  - name: hvac
+    description: Heating/cooling system failures, no heat, no AC, thermostat issues.
+    examples:
+      - "No heat and it's below freezing outside"
+      - "AC stopped working, it's hot but not dangerous"
+  - name: electrical
+    description: Power outages, wiring issues, breaker trips, outlet/fixture problems.
+    examples:
+      - "The whole house lost power"
+      - "An outlet is sparking"
+  - name: estimate_request
+    description: Requests for a quote on a new installation or larger project.
+    examples:
+      - "Want a quote for a new water heater"
+      - "Looking to get central air installed"
+  - name: other
+    description: General questions not covered by the categories above.
+    examples:
+      - "What are your service area zip codes?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: Active water leak, no heat in cold weather, no power, or an electrical hazard.
+    concrete_examples:
+      - "Water is pouring out from under the sink"
+      - "No heat and it's below freezing outside"
+      - "Whole house lost power"
+      - "An outlet is sparking"
+  - level: HIGH
+    definition: A major system is down but not actively causing damage or a hazard.
+    concrete_examples:
+      - "AC stopped working, it's hot but not dangerous"
+      - "One breaker keeps tripping"
+  - level: MEDIUM
+    definition: Inconvenient but functional.
+    concrete_examples:
+      - "Faucet drips slowly"
+      - "One room runs warmer than the rest of the house"
+  - level: LOW
+    definition: Routine maintenance or quote requests.
+    concrete_examples:
+      - "Want a quote for a new water heater"
+      - "Annual HVAC tune-up"
+
+required_entities:
+  - name: system_affected
+    description: Which fixture, unit, or circuit is affected.
+  - name: property_type
+    description: House, apartment, or commercial property.
+  - name: symptom_duration
+    description: How long the issue has been happening.
+
+appointment_types:
+  - name: emergency_dispatch
+    duration_minutes: 60
+    requires_onsite: true
+    triggers_when: CRITICAL urgency requests.
+  - name: standard_service_call
+    duration_minutes: 90
+    requires_onsite: true
+    triggers_when: HIGH or MEDIUM urgency repair requests.
+  - name: estimate_visit
+    duration_minutes: 45
+    requires_onsite: true
+    triggers_when: estimate_request issue type.
+
+reply_tone: >
+  Direct and reassuring — homeowners are often stressed about property damage, be clear
+  about what happens next and how fast help is coming.
+
+business_hours:
+  monday: {open: "07:00", close: "19:00"}
+  tuesday: {open: "07:00", close: "19:00"}
+  wednesday: {open: "07:00", close: "19:00"}
+  thursday: {open: "07:00", close: "19:00"}
+  friday: {open: "07:00", close: "19:00"}
+  saturday: {open: "08:00", close: "16:00"}
+  sunday: {open: null, close: null}
+
+timezone: "America/Denver"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 15, resolution_hours: 3}
+  HIGH: {first_response_minutes: 45, resolution_hours: 12}
+  MEDIUM: {first_response_minutes: 180, resolution_hours: 48}
+  LOW: {first_response_minutes: 720, resolution_hours: 168}
+
+routing_table:
+  - {issue_type: plumbing, urgency: CRITICAL, assignee_role: emergency_plumber}
+  - {issue_type: plumbing, assignee_role: plumber}
+  - {issue_type: hvac, urgency: CRITICAL, assignee_role: emergency_hvac_tech}
+  - {issue_type: hvac, assignee_role: hvac_tech}
+  - {issue_type: electrical, urgency: CRITICAL, assignee_role: emergency_electrician}
+  - {issue_type: electrical, assignee_role: electrician}
+  - {issue_type: estimate_request, assignee_role: sales_estimator}
+  - {issue_type: other, assignee_role: dispatcher}
+
+default_assignee_role: dispatcher
