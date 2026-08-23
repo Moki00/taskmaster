@@ -1,0 +1,107 @@
+taskmaster/
+├── backend/
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   ├── requirements.txt
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                               # FastAPI app, CORS, middleware, route mounting
+│   │   ├── config.py                             # Pydantic Settings (ENV, GEMINI_API_KEY, ACTIVE_VERTICAL)
+│   │   │
+│   │   ├── core/                                 # Cross-cutting infrastructure
+│   │   │   ├── __init__.py
+│   │   │   ├── timing.py                         # timed_stage context manager & EventBus
+│   │   │   └── errors.py                         # Custom application exception definitions
+│   │   │
+│   │   ├── models/                               # Shared Pydantic v2 data contracts
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                           # TaskmasterModel base (extra="forbid")
+│   │   │   ├── enums.py                          # Urgency, TicketStatus, Channel, Sentiment
+│   │   │   ├── common.py                         # Sender, Attachment, validate_issue_type
+│   │   │   ├── message.py                        # NormalizedMessage
+│   │   │   ├── classification.py                 # Classification output contract
+│   │   │   ├── ticket.py                         # Ticket, TicketDraft, TicketHistoryEntry
+│   │   │   ├── reply.py                          # ReplyDraft
+│   │   │   ├── appointment.py                    # Appointment, TimeSlot
+│   │   │   ├── customer.py                       # Customer profile model
+│   │   │   └── pipeline.py                       # PipelineState, StageTiming, PipelineEvent
+│   │   │
+│   │   ├── verticals/                            # Business configuration layer (zero code changes)
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                           # VerticalConfig schema & SLA models
+│   │   │   ├── loader.py                         # YAML loader with caching & active vertical getter
+│   │   │   └── packs/
+│   │   │       ├── it_support.yaml               # Flagship demo pack
+│   │   │       ├── dental_clinic.yaml
+│   │   │       ├── home_services.yaml
+│   │   │       └── property_management.yaml
+│   │   │
+│   │   ├── agents/                               # 5-Stage Google ADK / Gemini pipeline
+│   │   │   ├── __init__.py
+│   │   │   ├── pipeline.py                       # Orchestrator: chains agents and returns PipelineState
+│   │   │   ├── intake_agent.py                   # Ingestion normalization & sender parsing
+│   │   │   ├── classifier_agent.py               # Gemini 3.5 NLU against VerticalConfig
+│   │   │   ├── ticket_agent.py                   # Ticket creation & routing assignment
+│   │   │   ├── reply_agent.py                    # Contextual, empathetic reply drafting
+│   │   │   └── scheduler_agent.py                # Calendar slot checking & booking
+│   │   │
+│   │   ├── channels/                             # Inbound transport adapters
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                           # Base channel interface
+│   │   │   ├── web.py                            # Web form & simulator payload adapter
+│   │   │   ├── email_gmail.py                    # Gmail webhook parser
+│   │   │   └── sms_twilio.py                     # Twilio webhook parser
+│   │   │
+│   │   ├── integrations/                         # External client wrappers (timeout & retry safe)
+│   │   │   ├── __init__.py
+│   │   │   ├── gemini_client.py                  # Google GenAI SDK client helper
+│   │   │   └── calendar_client.py                # Google Calendar API connector
+│   │   │
+│   │   ├── services/                             # Storage & repository implementations
+│   │   │   ├── __init__.py
+│   │   │   ├── repository.py                     # TicketRepository protocol & get_repository()
+│   │   │   ├── firestore_repo.py                 # Async Firestore client implementation
+│   │   │   └── in_memory_repo.py                 # In-memory twin for local testing (ENV=local)
+│   │   │
+│   │   └── api/
+│   │       ├── __init__.py
+│   │       └── routes/
+│   │           ├── __init__.py
+│   │           ├── simulate.py                   # POST /api/simulate (UI demo testing endpoint)
+│   │           ├── tickets.py                    # GET/POST /api/tickets (Dashboard queries)
+│   │           └── webhooks.py                   # POST /webhook/pubsub (Inbound Cloud Pub/Sub push)
+│   │
+│   └── tests/
+│       ├── test_models.py
+│       ├── test_repository.py
+│       ├── test_verticals.py
+│       └── test_pipeline.py
+│
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   ├── index.html
+│   └── src/
+│       ├── main.jsx
+│       ├── index.css
+│       ├── App.jsx                               # Split-screen simulator & mission control
+│       ├── components/
+│       │   ├── ChannelSimulator.jsx              # Inbound preset & custom message inputs
+│       │   ├── TicketSummary.jsx                 # AI extraction card & urgency badges
+│       │   └── ExecutionLog.jsx                  # Real-time stage execution timeline
+│       └── pages/
+│           └── Dashboard.jsx                     # Full technician operations view
+│
+├── docs/
+│   ├── prd.md
+│   ├── architecture_notes.md
+│   ├── demo_flow.md
+│   └── structure.txt
+│
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── GEMINI.md
+└── README.md

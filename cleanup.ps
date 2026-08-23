@@ -1,0 +1,71 @@
+# 1. Clean up deprecated or duplicate files
+$staleFiles = @(
+    "docs/structure1.txt",
+    "docs/structure2.txt"
+)
+
+foreach ($f in $staleFiles) {
+    if (Test-Path $f) {
+        Remove-Item -Path $f -Force
+        Write-Host "Removed obsolete file: $f" -ForegroundColor Yellow
+    }
+}
+
+# 2. Define all required directories
+$dirs = @(
+    "backend/app/core",
+    "backend/app/models",
+    "backend/app/verticals/packs",
+    "backend/app/agents",
+    "backend/app/channels",
+    "backend/app/integrations",
+    "backend/app/services",
+    "backend/app/api/routes",
+    "backend/tests",
+    "frontend/src/components",
+    "frontend/src/pages",
+    "docs"
+)
+
+foreach ($d in $dirs) {
+    if (-not (Test-Path $d)) {
+        New-Item -ItemType Directory -Force -Path $d | Out-Null
+        Write-Host "Created directory: $d" -ForegroundColor Cyan
+    }
+}
+
+# 3. Define all required files (will NOT overwrite existing files)
+$files = @(
+    "backend/app/core/errors.py",
+    "backend/app/agents/__init__.py",
+    "backend/app/agents/pipeline.py",
+    "backend/app/agents/intake_agent.py",
+    "backend/app/agents/classifier_agent.py",
+    "backend/app/agents/ticket_agent.py",
+    "backend/app/agents/reply_agent.py",
+    "backend/app/agents/scheduler_agent.py",
+    "backend/app/channels/__init__.py",
+    "backend/app/channels/base.py",
+    "backend/app/channels/web.py",
+    "backend/app/channels/email_gmail.py",
+    "backend/app/channels/sms_twilio.py",
+    "backend/app/integrations/__init__.py",
+    "backend/app/integrations/gemini_client.py",
+    "backend/app/integrations/calendar_client.py",
+    "backend/app/api/__init__.py",
+    "backend/app/api/routes/__init__.py",
+    "backend/app/api/routes/simulate.py",
+    "backend/app/api/routes/tickets.py",
+    "backend/app/api/routes/webhooks.py",
+    "backend/tests/test_pipeline.py",
+    "docs/structure.txt"
+)
+
+foreach ($f in $files) {
+    if (-not (Test-Path $f)) {
+        New-Item -ItemType File -Force -Path $f | Out-Null
+        Write-Host "Created placeholder: $f" -ForegroundColor Green
+    }
+}
+
+Write-Host "`nTaskmaster directory structure aligned successfully!" -ForegroundColor Green
