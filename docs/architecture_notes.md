@@ -19,12 +19,12 @@ Taskmaster is an autonomous, event-driven IT support triage and dispatch coordin
 │
 ▼
 [ Google ADK Router Agent ] (Gemini 3.5 Flash)
-│
+        │
 ┌───────┴────────────────────────┬────────────────────────┐
-▼ ▼ ▼
+▼                                ▼                        ▼
 [ Tool: create_support_ticket ] [ Tool: check_schedule ] [ Tool: stage_sms_reply ]
-│ │ │
-▼ ▼ ▼
+│                                   │                       │
+▼                                   ▼                       ▼
 (Firestore / CRM Record) (Google Calendar Slot) (Draft Dispatch Queue)
 
 ```
