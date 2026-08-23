@@ -3,7 +3,7 @@
 Context file for the backend / AI pipeline owner. Read this at the start of every session before touching `backend/`.
 
 Hackathon: **All Things Agentic Hackathon 2026** (Google + Devpost). Deadline: **Aug 31, 2026**.
-Owner of this repo's backend and AI pipeline: the user (`habibbuneri343@gmail.com`). Frontend (React + Tailwind dashboard) is built by a teammate who consumes this backend's API.
+
 
 ## Product
 
