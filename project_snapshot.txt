@@ -1,0 +1,4216 @@
+TASKMASTER PROJECT DIRECTORY TREE
+======================================================================
+taskmaster/
+├── .env.example
+├── .gitignore
+├── GEMINI.md
+├── README.md
+├── backend
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── README.md
+│   ├── app
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── core
+│   │   │   ├── __init__.py
+│   │   │   └── timing.py
+│   │   ├── main.py
+│   │   ├── models
+│   │   │   ├── __init__.py
+│   │   │   ├── appointment.py
+│   │   │   ├── base.py
+│   │   │   ├── classification.py
+│   │   │   ├── common.py
+│   │   │   ├── customer.py
+│   │   │   ├── enums.py
+│   │   │   ├── message.py
+│   │   │   ├── pipeline.py
+│   │   │   ├── reply.py
+│   │   │   └── ticket.py
+│   │   ├── services
+│   │   │   ├── __init__.py
+│   │   │   ├── firestore_repo.py
+│   │   │   ├── in_memory_repo.py
+│   │   │   └── repository.py
+│   │   └── verticals
+│   │       ├── __init__.py
+│   │       ├── base.py
+│   │       ├── loader.py
+│   │       └── packs
+│   │           ├── dental_clinic.yaml
+│   │           ├── home_services.yaml
+│   │           ├── it_support.yaml
+│   │           └── property_management.yaml
+│   ├── pyproject.toml
+│   ├── requirements.txt
+│   └── tests
+│       ├── test_agent.py
+│       ├── test_models.py
+│       ├── test_repository.py
+│       └── test_verticals.py
+├── docker-compose.yml
+├── docs
+│   ├── architecture_notes.md
+│   ├── demo_flow.md
+│   ├── prd.md
+│   ├── structure1.txt
+│   └── structure2.txt
+└── frontend
+    ├── index.html
+    ├── package-lock.json
+    ├── package.json
+    ├── postcss.config.js
+    ├── src
+    │   ├── App.jsx
+    │   ├── components
+    │   │   ├── ChannelSimulator.jsx
+    │   │   ├── ExecutionLog.jsx
+    │   │   └── TicketSummary.jsx
+    │   ├── index.css
+    │   ├── main.jsx
+    │   └── pages
+    │       └── Dashboard.jsx
+    ├── tailwind.config.js
+    └── vite.config.js
+
+
+FILE CONTENTS
+
+======================================================================
+FILE: .env.example
+======================================================================
+
+
+======================================================================
+FILE: .gitignore
+======================================================================
+# Python
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+backend/venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Misc
+.DS_Store
+*.log
+
+======================================================================
+FILE: GEMINI.md
+======================================================================
+# Taskmaster — Project Context
+
+Context file for the backend / AI pipeline owner. Read this at the start of every session before touching `backend/`.
+
+Hackathon: **All Things Agentic Hackathon 2026** (Google + Devpost). Deadline: **Sunday Aug 30**.
+
+## Team & Responsibilities
+
+- **Morgan King** – Project Lead & Technical Architect
+- **Dr. Agentic** – AI Core & Google ADK Agent Orchestration (`backend/src/services/ai/`)
+- **Asmae** – FastAPI Routes & Cloud Pub/Sub Ingestion (`backend/src/api/`)
+- **Ashvin** – Frontend Visualizer & React State Management (`frontend/src/`)
+- **Habib Ur Rahman** – Ticket Persistence & External Integrations (`backend/src/services/`)
+
+## Product
+
+Taskmaster is an autonomous multi-agent system that turns messy, unstructured customer messages into clean, actionable tickets and booked appointments — **in under 30 seconds, with no human in the loop for standard requests.**
+
+IT support / MSPs is the flagship vertical and the demo, but the architecture is **vertical-agnostic by design**. The same pipeline serves dental clinics, plumbing and home services, auto repair, salons, property management, law firms — any business that receives high volumes of inbound requests and books appointments.
+
+What changes per vertical is **configuration** (taxonomy, urgency rules, tone, appointment types) — **never code**. "Add a new vertical" should be a config file someone writes in 20 minutes, not an engineering task.
+
+## Channels
+
+- Email (Gmail / Outlook)
+- SMS (Twilio)
+- Web form
+- Slack
+- **Voice** — customers can speak their problem instead of typing it. Voice is a first-class channel, not an afterthought.
+
+## Architecture — 5-agent directed pipeline
+
+Each agent passes state to the next.
+
+1. **Intake Agent** — normalizes messages from every channel (including audio) into one internal schema; detects language; extracts sender name, email, phone, company; assigns `intake_id` + timestamp.
+2. **Classifier Agent** — the core. Uses Gemini 3.5 for deep NLU of messy, incoherent, angry, multilingual, half-finished messages. Outputs `issue_type` and `urgency` from the **active vertical's taxonomy**, extracted entities, missing critical info, a customer sentiment/frustration read, and a calibrated confidence score.
+3. **Ticket Agent** — builds the structured ticket, assigns number/priority/category/status, writes to Firestore, links customer history, routes to the right person.
+4. **Reply Agent** — writes the customer reply, matching their language, tone, and emotional state. Complete info → confirmation + ticket number + expected response time. Missing info → at most 3 targeted questions. Never generic.
+5. **Scheduler Agent** — decides if an appointment is needed, checks availability via native Google Calendar integration, proposes slots, confirms, blocks the slot, sets status to Scheduled.
+
+## Why it matters (frames every design decision)
+
+The product is not "ticket automation" — it is the difference between a frustrated customer waiting four hours for any sign of life, and that same customer getting an intelligent, specific, empathetic reply in under 30 seconds.
+
+**Latency and empathy are the product.** Anything that adds seconds or reads like a robot is a bug.
+
+## Stack
+
+- Python 3.11, FastAPI (async)
+- Google ADK for agent orchestration
+- Gemini 3.5 for all LLM and audio understanding
+- Google Firestore
+- Native Google Calendar API
+- Gmail API + Twilio (SMS and voice) for ingestion and sending
+- Deployed on Google Cloud Run
+- Frontend: React + Tailwind dashboard (teammate-owned; this repo owner provides the API it consumes)
+
+## Engineering rules for this repo
+
+- Python 3.11, full type hints, Pydantic v2 for every structure crossing a boundary.
+- `async`/`await` everywhere; never block the event loop on an SDK call.
+- No hardcoded secrets, model names, taxonomies, or business rules — config only.
+- Nothing IT-specific hardcoded in agent code. IT support lives in a vertical config pack like every other vertical.
+- Every LLM call returns validated structured JSON; never parse free text with regex.
+- Every external call wrapped with timeout + retry + structured logging.
+- Every agent stage logs elapsed time — the sub-30-second claim must be measurable.
+- Small, focused modules. Ask before adding a dependency.
+
+## Current repo state (as of clone)
+
+The existing `backend/src/` is an early single-shot MVP (`ai_service.py` + `triage_agent.py` doing triage in one step, in-memory `tickets_db`, no vertical config). It predates the 5-agent / vertical-config architecture below. Treat it as a starting point to refactor toward the target structure, not as the target itself.
+
+## Backend folder structure (target)
+
+Target architecture for `backend/`, reflecting the 5-agent pipeline and vertical-agnostic config model above. Refactor toward this incrementally, don't big-bang rewrite.
+
+```
+backend/
+├── Dockerfile
+├── pyproject.toml
+├── app/
+│   ├── main.py                          # FastAPI app instantiation & route registration
+│   ├── config.py                        # pydantic-settings: env vars, credentials, no literals elsewhere
+│   │
+│   ├── core/                            # cross-cutting infra, no business logic
+│   │   ├── timing.py                    # timed_stage async context manager + in-memory event bus (built)
+│   │   ├── retry.py                     # timeout + retry decorator/wrapper for all external calls
+│   │   └── errors.py                    # shared exception types
+│   │
+│   ├── models/                          # Pydantic v2 models — the contract between all 5 agents (built)
+│   │   ├── base.py                      # TaskmasterModel: shared config (extra="forbid", etc.)
+│   │   ├── enums.py                     # Channel, Urgency, TicketStatus, Sentiment, AppointmentStatus
+│   │   ├── common.py                    # Sender, Attachment, issue_type taxonomy validator
+│   │   ├── message.py                   # NormalizedMessage (unified schema from all channels)
+│   │   ├── classification.py            # Classification (issue_type, urgency, entities, confidence...)
+│   │   ├── ticket.py                    # Ticket, TicketHistoryEntry (priority reuses Urgency)
+│   │   ├── reply.py                     # ReplyDraft
+│   │   ├── appointment.py               # Appointment, TimeSlot
+│   │   └── pipeline.py                  # PipelineState, StageTiming, PipelineEvent, PipelineErrorEntry
+│   │
+│   ├── verticals/                       # THE config layer — "add a vertical" happens only here
+│   │   ├── models.py                    # VerticalConfig pydantic schema (taxonomy, urgency rules, tone, appointment types)
+│   │   ├── loader.py                    # loads/validates a vertical config pack by name
+│   │   └── packs/
+│   │       ├── it_support.yaml          # flagship/demo vertical
+│   │       ├── dental_clinic.yaml
+│   │       ├── plumbing.yaml
+│   │       └── ...                      # each new vertical = one new file here, no code changes
+│   │
+│   ├── agents/                          # the 5-stage pipeline, Google ADK-orchestrated
+│   │   ├── pipeline.py                  # wires the 5 agents, passes state, records stage timings
+│   │   ├── intake_agent.py              # channel normalization, language detect, sender extraction
+│   │   ├── classifier_agent.py          # Gemini 3.5 NLU against active vertical's taxonomy
+│   │   ├── ticket_agent.py              # ticket construction, Firestore write, routing
+│   │   ├── reply_agent.py               # tone/language-matched customer reply drafting
+│   │   └── scheduler_agent.py           # appointment decision + Calendar booking
+│   │
+│   ├── channels/                        # per-channel ingestion adapters -> NormalizedMessage
+│   │   ├── base.py                      # Channel interface/protocol
+│   │   ├── email_gmail.py
+│   │   ├── sms_twilio.py
+│   │   ├── web_form.py
+│   │   ├── slack.py
+│   │   └── voice_twilio.py              # audio ingestion -> Gemini audio understanding
+│   │
+│   ├── integrations/                    # thin clients for external services, all async, timeout+retry
+│   │   ├── gemini_client.py             # wraps Gemini 3.5 calls, enforces structured JSON output
+│   │   ├── firestore_client.py
+│   │   ├── calendar_client.py
+│   │   ├── gmail_client.py
+│   │   └── twilio_client.py
+│   │
+│   ├── services/                        # persistence layer (built)
+│   │   ├── repository.py                # TicketRepository interface, get_repository(), TicketPage, errors
+│   │   ├── firestore_repo.py            # FirestoreRepo: real Firestore, transactional ticket numbers
+│   │   └── in_memory_repo.py            # InMemoryRepo: same interface, selected when ENV=local
+│   │
+│   └── api/
+│       ├── deps.py                      # FastAPI dependency injection (settings, clients, active vertical)
+│       └── routes/
+│           ├── webhooks.py              # inbound push endpoints per channel
+│           ├── tickets.py               # dashboard-facing endpoints (teammate's frontend consumes these)
+│           └── simulate.py              # demo/live-testing endpoint
+│
+└── tests/
+    ├── unit/
+    │   ├── test_intake_agent.py
+    │   ├── test_classifier_agent.py
+    │   ├── test_ticket_agent.py
+    │   ├── test_reply_agent.py
+    │   └── test_scheduler_agent.py
+    ├── integration/
+    │   └── test_pipeline_end_to_end.py
+    └── fixtures/
+        └── sample_messages/              # messy/multilingual/angry sample inputs per vertical
+```
+
+### Structural rules this layout enforces
+
+- **`verticals/`** is the only place taxonomy, urgency rules, tone, and appointment types may live. If an agent file references `"IT"`, `"printer"`, `"server down"`, or any other IT-specific literal, that's a bug — it belongs in `verticals/packs/it_support.yaml`. `models.classification.Classification.issue_type` and `models.ticket.Ticket.issue_type` enforce this at runtime via a Pydantic validation-context check (`validate_issue_type` in `models/common.py`) — no taxonomy data lives in `models/` itself.
+- **`agents/`** files depend on `models/` and `verticals/`, never on a specific `channels/` or `integrations/` implementation directly — call through the client wrappers so external SDKs stay swappable and mockable in tests.
+- **No agent touches the Firestore SDK directly.** Persistence goes through `services.repository.TicketRepository` (via `get_repository()`), never `FirestoreRepo`/`InMemoryRepo` by name — that's what lets the whole pipeline and its tests run with zero GCP credentials when `ENV=local`.
+- **`channels/`** only normalizes into `models.message.NormalizedMessage`. No classification, ticketing, or reply logic belongs here.
+- **`integrations/`** holds all timeout/retry/structured-logging wrapping (per the engineering rules above) so `agents/` code stays free of boilerplate.
+- Every file under `agents/` logs its own elapsed time via `core/timing.py`'s `timed_stage` — this is what makes the sub-30-second claim measurable end to end.
+- Every model in `models/` inherits `TaskmasterModel` (`extra="forbid"`) — a stray or typo'd field from an agent fails validation loudly instead of silently passing through to the next stage.
+
+
+======================================================================
+FILE: README.md
+======================================================================
+# Taskmaster
+
+**Turn messy, unstructured customer messages into clean, actionable tickets and booked appointments — in under 30 seconds, with no human in the loop for standard requests.**
+
+Built for the **All Things Agentic Hackathon 2026** (Google + Devpost) — deadline **Aug 31, 2026**.
+
+---
+
+## Table of contents
+
+- [What is Taskmaster](#what-is-taskmaster)
+- [Why it matters](#why-it-matters)
+- [Architecture — the 5-agent pipeline](#architecture--the-5-agent-pipeline)
+- [Vertical-agnostic by design](#vertical-agnostic-by-design)
+- [Channels](#channels)
+- [Tech stack](#tech-stack)
+- [Project status](#project-status)
+- [Repository structure](#repository-structure)
+- [Getting started](#getting-started)
+  - [Backend](#backend)
+  - [Frontend](#frontend)
+  - [Docker Compose (both at once)](#docker-compose-both-at-once)
+- [Environment variables](#environment-variables)
+- [Running tests](#running-tests)
+- [Documentation](#documentation)
+- [Team](#team)
+
+---
+
+## What is Taskmaster
+
+Taskmaster is an autonomous multi-agent system that reads an inbound customer message — email,
+SMS, a web form, Slack, or a spoken voice message — and turns it into a structured support ticket
+(and a booked appointment, when one is needed) without a human touching it for standard requests.
+
+**IT support / MSPs is the flagship vertical and the demo**, but the architecture is
+vertical-agnostic by design. The same pipeline can serve dental clinics, plumbing and home
+services, auto repair shops, salons, property managers, law firms — any business that receives a
+high volume of inbound requests and books appointments. What changes per vertical is
+**configuration** (taxonomy, urgency rules, tone, appointment types) — **never code**. Adding a new
+vertical is a config file, not an engineering task — see [`app/verticals/`](backend/app/verticals).
+
+## Why it matters
+
+Taskmaster isn't "ticket automation." It's the difference between a customer waiting four hours
+for any sign of life, and that same customer getting an intelligent, specific, empathetic reply in
+under 30 seconds.
+
+**Latency and empathy are the product.** Anything that adds seconds or reads like a robot is a bug.
+
+## Architecture — the 5-agent pipeline
+
+Each agent normalizes, enriches, and passes state to the next.
+
+```mermaid
+flowchart LR
+    A[📥 Intake Agent] --> B[🧠 Classifier Agent]
+    B --> C[🎫 Ticket Agent]
+    C --> D[✉️ Reply Agent]
+    D --> E[📅 Scheduler Agent]
+
+    A -.->|normalizes every channel<br/>incl. audio, into one schema| A
+    B -.->|Gemini 3.5 NLU vs. the<br/>active vertical's taxonomy| B
+    C -.->|writes to Firestore,<br/>links customer history| C
+    D -.->|tone/language-matched<br/>reply, ≤3 questions| D
+    E -.->|checks Google Calendar,<br/>proposes/confirms a slot| E
+```
+
+| # | Agent | Responsibility |
+|---|-------|-----------------|
+| 1 | **Intake** | Normalizes messages from every channel (including audio) into one internal schema; detects language; extracts sender name, email, phone, company; assigns `intake_id` + timestamp. |
+| 2 | **Classifier** | The core. Uses **Gemini 3.5** for deep NLU of messy, incoherent, angry, multilingual, half-finished messages. Outputs `issue_type` and `urgency` from the **active vertical's taxonomy**, extracted entities, missing critical info, a sentiment/frustration read, and a calibrated confidence score. |
+| 3 | **Ticket** | Builds the structured ticket, assigns number/priority/category/status, writes to Firestore, links customer history, routes to the right person. |
+| 4 | **Reply** | Writes the customer reply, matching their language, tone, and emotional state. Complete info → confirmation + ticket number + expected response time. Missing info → at most 3 targeted questions. Never generic. |
+| 5 | **Scheduler** | Decides if an appointment is needed, checks availability via native Google Calendar integration, proposes slots, confirms, blocks the slot, sets status to `Scheduled`. |
+
+## Vertical-agnostic by design
+
+Four complete vertical config packs ship today in [`backend/app/verticals/packs/`](backend/app/verticals/packs):
+
+| Vertical | Flagship | "Urgent" means |
+|----------|:---:|-----------------|
+| `it_support` | ✅ demo | Business down — a whole site or multiple users can't work |
+| `dental_clinic` | | Active severe pain, swelling, or dental trauma |
+| `home_services` | | Active leak, no heat, no power, or an electrical hazard |
+| `property_management` | | No heat/AC in extreme weather, no water, gas smell, safety hazard |
+
+Each pack defines its own issue-type taxonomy, urgency definitions, required entities, appointment
+types, reply tone, business hours/timezone, SLAs by priority, and routing rules — all data, no
+code. Swapping `ACTIVE_VERTICAL` in config changes everything the pipeline classifies, replies, and
+routes against.
+
+## Channels
+
+Email (Gmail/Outlook), SMS (Twilio), web form, Slack, and **voice** — customers can speak their
+problem instead of typing it. Voice is a first-class channel, not an afterthought.
+
+## Tech stack
+
+- **Backend**: Python 3.11, FastAPI (async), Google ADK for agent orchestration
+- **AI**: Gemini 3.5 for all LLM reasoning and audio understanding
+- **Data**: Google Firestore
+- **Integrations**: native Google Calendar API, Gmail API, Twilio (SMS + voice)
+- **Deploy**: Google Cloud Run
+- **Frontend**: React + Vite + Tailwind CSS dashboard
+
+## Project status
+
+Built so far, all tested:
+
+- ✅ `app/models/` — the Pydantic v2 contract shared by all 5 agents (`NormalizedMessage`,
+  `Classification`, `Ticket`/`TicketDraft`, `ReplyDraft`, `Appointment`, `PipelineState`, `Customer`)
+- ✅ `app/verticals/` — the vertical config system + 4 complete packs
+- ✅ `app/services/` — async `TicketRepository` (Firestore-backed, with a full in-memory twin for
+  local dev/tests) covering ticket CRUD, customer lookup/history, and pipeline-run persistence
+- ✅ `app/main.py` — FastAPI app skeleton with structured logging, request tracing, `/health`
+- ✅ `app/core/timing.py` — per-stage timing + live event bus (the sub-30-second claim is
+  measurable, not just asserted)
+- 🚧 The 5 agents themselves (`app/agents/`) — not yet implemented
+- 🚧 Channel adapters (`app/channels/`) — not yet implemented
+- 🚧 Google/Twilio integration clients (`app/integrations/`) — not yet implemented
+- ✅ Frontend dashboard scaffold (React/Vite/Tailwind) — split-screen visualizer + ticket summary
+  components in place
+
+See [`GEMINI.md`](GEMINI.md) for the full target architecture and engineering rules this repo
+follows.
+
+## Repository structure
+
+```
+taskmaster/
+├── backend/
+│   ├── app/
+│   │   ├── main.py, config.py           # FastAPI app + typed, fail-loud settings
+│   │   ├── core/timing.py               # per-stage timing + event bus
+│   │   ├── models/                      # the 5-agent contract (Pydantic v2)
+│   │   ├── verticals/                   # vertical config schema, loader, and packs
+│   │   └── services/                    # TicketRepository (Firestore + in-memory)
+│   ├── tests/                           # pytest, all green against InMemoryRepo
+│   ├── pyproject.toml
+│   └── src/                             # earlier single-shot MVP (superseded by app/)
+├── frontend/                            # React + Vite + Tailwind dashboard
+├── docs/                                # PRD, architecture notes, demo script
+├── GEMINI.md                            # full project context — read this first
+└── docker-compose.yml                   # run backend + frontend together
+```
+
+## Getting started
+
+### Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e .
+cp .env.example .env             # fill in the required values, see below
+uvicorn app.main:app --reload --port 8000
+```
+
+Health check: `GET http://localhost:8000/health`
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### Docker Compose (both at once)
+
+```bash
+docker compose up
+```
+
+Backend on `:8000`, frontend on `:5173`. Uses `backend/.env` for backend config (see
+[`docker-compose.yml`](docker-compose.yml)).
+
+## Environment variables
+
+All documented with comments in [`backend/.env.example`](backend/.env.example) — copy it to
+`backend/.env` and fill in real values. The app **fails loudly at startup** if a required variable
+is missing, rather than running with silently broken config.
+
+Required: `GEMINI_API_KEY`, `GCP_PROJECT_ID`, `ACTIVE_VERTICAL`. Everything else (Gmail, Twilio,
+Calendar, `AUTO_SEND_REPLIES`, etc.) is optional until you're wiring up that specific integration.
+Set `ENV=local` to run the whole pipeline — repository included — with **zero GCP credentials**.
+
+## Running tests
+
+```bash
+cd backend
+pytest
+```
+
+All repository tests run entirely against the in-memory repo, so the full suite needs no GCP
+credentials either.
+
+## Documentation
+
+- [`GEMINI.md`](GEMINI.md) — full project context: product, architecture, engineering rules, and
+  the target folder structure. Read this first in any new session.
+- [`docs/prd.md`](docs/prd.md) — product requirements and user stories
+- [`docs/architecture_notes.md`](docs/architecture_notes.md) — infra/deployment notes
+- [`docs/demo_flow.md`](docs/demo_flow.md) — hackathon demo script
+
+## Team
+
+Built by collaborators on this repo for the All Things Agentic Hackathon 2026. One collaborator
+owns the backend and the AI pipeline; the React/Tailwind dashboard is built by a teammate
+consuming this backend's API.
+
+
+======================================================================
+FILE: docker-compose.yml
+======================================================================
+version: "3.8"
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+
+======================================================================
+FILE: backend\.env.example
+======================================================================
+# Copy this file to .env and fill in real values. Never commit .env.
+
+# ── Runtime ───────────────────────────────────────────────────────────────
+ENV=local                          # local | dev | staging | production
+LOG_LEVEL=INFO                     # DEBUG | INFO | WARNING | ERROR
+
+# ── Gemini (required) ────────────────────────────────────────────────────
+GEMINI_API_KEY=                    # API key for Gemini 3.5 (Google AI Studio or Vertex AI).
+GEMINI_MODEL=gemini-3.5-flash      # Gemini model id used by every agent's LLM calls. Change here, never per-agent.
+
+# ── Google Cloud (required) ──────────────────────────────────────────────
+GCP_PROJECT_ID=                    # GCP project backing Firestore, Calendar, and Gmail.
+FIRESTORE_COLLECTION_PREFIX=taskmaster   # Prefix applied to every Firestore collection name (e.g. "<prefix>_tickets").
+
+# ── Vertical config (required) ───────────────────────────────────────────
+ACTIVE_VERTICAL=it_support         # Name of the vertical config pack to load from app/verticals/packs/ (no file extension).
+
+# ── Gmail channel (email ingestion + sending) ────────────────────────────
+GMAIL_CLIENT_ID=                   # OAuth 2.0 client ID for the Gmail API.
+GMAIL_CLIENT_SECRET=               # OAuth 2.0 client secret for the Gmail API.
+GMAIL_REFRESH_TOKEN=               # Long-lived OAuth refresh token for the mailbox Taskmaster reads from and sends as.
+GMAIL_SENDER_EMAIL=                # Mailbox address Taskmaster sends replies from.
+
+# ── Twilio channel (SMS + voice) ─────────────────────────────────────────
+TWILIO_ACCOUNT_SID=                # Twilio account SID.
+TWILIO_AUTH_TOKEN=                 # Twilio auth token.
+TWILIO_FROM_NUMBER=                # Twilio phone number Taskmaster sends SMS/voice from, E.164 format (e.g. +15551234567).
+
+# ── Scheduler ─────────────────────────────────────────────────────────────
+CALENDAR_ID=                       # Google Calendar ID the Scheduler Agent checks and books appointments into.
+
+# ── Safety switch ─────────────────────────────────────────────────────────
+AUTO_SEND_REPLIES=false            # true = Reply Agent sends replies automatically. false = drafts only (safe default for demos).
+
+
+======================================================================
+FILE: backend\.gitignore
+======================================================================
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+htmlcov/
+.coverage
+
+# Env
+.env
+
+
+======================================================================
+FILE: backend\Dockerfile
+======================================================================
+
+
+======================================================================
+FILE: backend\README.md
+======================================================================
+# Taskmaster Backend
+
+FastAPI backend and multi-agent AI pipeline for Taskmaster. See [`GEMINI.md`](../GEMINI.md) at the repo root for full project context, architecture, and engineering rules.
+
+## Requirements
+
+- Python 3.11+
+
+## Setup
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -e .
+cp .env.example .env           # fill in required values
+```
+
+## Run
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+Health check: `GET http://localhost:8000/health`
+
+## Test
+
+```bash
+pytest
+```
+
+## Structure
+
+See the "Backend folder structure (target)" section of [`GEMINI.md`](../GEMINI.md).
+
+
+======================================================================
+FILE: backend\pyproject.toml
+======================================================================
+[project]
+name = "taskmaster-backend"
+version = "0.1.0"
+description = "Taskmaster autonomous multi-agent pipeline: messy inbound messages to tickets and booked appointments."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "google-adk>=0.1.0",
+    "google-genai>=0.3.0",
+    "google-cloud-firestore>=2.19.0",
+    "google-api-python-client>=2.149.0",
+    "google-auth>=2.35.0",
+    "twilio>=9.3.0",
+    "httpx>=0.27.0",
+    "structlog>=24.4.0",
+    "pyyaml>=6.0.3",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+
+======================================================================
+FILE: backend\requirements.txt
+======================================================================
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.6.0
+python-dotenv>=1.0.0
+google-genai>=0.1.1
+requests>=2.31.0
+
+======================================================================
+FILE: backend\app\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\config.py
+======================================================================
+"""Application settings, loaded from environment / .env. See ../.env.example for every variable.
+
+This is the ONLY place environment configuration is read. Agents, channels, and integrations
+must receive values from `settings`, never call os.environ directly.
+"""
+from __future__ import annotations
+
+import sys
+from typing import Literal
+
+from pydantic import ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
+    # ── Runtime ──────────────────────────────────────────────────────────
+    ENV: Literal["local", "dev", "staging", "production"] = "local"
+    LOG_LEVEL: str = "INFO"
+
+    # ── Gemini (required) ───────────────────────────────────────────────
+    GEMINI_API_KEY: str
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+
+    # ── Google Cloud (required) ─────────────────────────────────────────
+    GCP_PROJECT_ID: str
+    FIRESTORE_COLLECTION_PREFIX: str = "taskmaster"
+
+    # ── Vertical config (required) ──────────────────────────────────────
+    ACTIVE_VERTICAL: str
+
+    # ── Gmail channel ────────────────────────────────────────────────────
+    GMAIL_CLIENT_ID: str | None = None
+    GMAIL_CLIENT_SECRET: str | None = None
+    GMAIL_REFRESH_TOKEN: str | None = None
+    GMAIL_SENDER_EMAIL: str | None = None
+
+    # ── Twilio channel (SMS + voice) ────────────────────────────────────
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_FROM_NUMBER: str | None = None
+
+    # ── Scheduler ────────────────────────────────────────────────────────
+    CALENDAR_ID: str | None = None
+
+    # ── Safety switch ────────────────────────────────────────────────────
+    AUTO_SEND_REPLIES: bool = False
+
+
+def _load_settings() -> Settings:
+    try:
+        return Settings()
+    except ValidationError as exc:
+        missing = sorted({str(err["loc"][0]) for err in exc.errors() if err["type"] == "missing"})
+        if missing:
+            sys.stderr.write(
+                "Taskmaster failed to start: missing required environment variable(s): "
+                f"{', '.join(missing)}.\n"
+                "Copy backend/.env.example to backend/.env and fill these in.\n"
+            )
+        else:
+            sys.stderr.write(f"Taskmaster failed to start: invalid configuration.\n{exc}\n")
+        raise SystemExit(1) from exc
+
+
+settings = _load_settings()
+
+
+======================================================================
+FILE: backend\app\main.py
+======================================================================
+"""FastAPI app entrypoint. No agent or channel routes here yet — /health only."""
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+from importlib.metadata import PackageNotFoundError, version
+
+import structlog
+from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+from app.config import settings
+
+try:
+    APP_VERSION = version("taskmaster-backend")
+except PackageNotFoundError:
+    APP_VERSION = "0.0.0-dev"
+
+
+def _configure_logging() -> None:
+    level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(level),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+_configure_logging()
+log = structlog.get_logger("taskmaster")
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Binds a request id to every log line emitted while handling a request, and logs start/end + latency."""
+
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+
+        start = time.perf_counter()
+        log.info("request_started", method=request.method, path=request.url.path)
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            log.exception(
+                "request_failed",
+                method=request.method,
+                path=request.url.path,
+                elapsed_ms=elapsed_ms,
+            )
+            raise
+
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        response.headers["X-Request-ID"] = request_id
+        log.info(
+            "request_finished",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            elapsed_ms=elapsed_ms,
+        )
+        return response
+
+
+app = FastAPI(title="Taskmaster API", version=APP_VERSION)
+app.add_middleware(RequestIDMiddleware)
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "env": settings.ENV,
+        "active_vertical": settings.ACTIVE_VERTICAL,
+    }
+
+
+======================================================================
+FILE: backend\app\core\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\core\timing.py
+======================================================================
+"""Stage timing for the agent pipeline.
+
+`timed_stage` is what makes the sub-30-second claim measurable: wrap every agent stage in it
+and every stage emits a structured log line plus an event on `event_bus`, which the demo UI
+(or anything else) can subscribe to for live pipeline progress.
+"""
+from __future__ import annotations
+
+import asyncio
+import inspect
+import time
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import Any
+
+import structlog
+
+log = structlog.get_logger("taskmaster.timing")
+
+
+@dataclass(frozen=True, slots=True)
+class StageEvent:
+    stage: str
+    elapsed_ms: float
+    correlation_id: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+Subscriber = Callable[[StageEvent], Any | Awaitable[Any]]
+
+
+class EventBus:
+    """In-memory pub/sub for pipeline stage events. Subscribers may be sync or async callables."""
+
+    def __init__(self) -> None:
+        self._subscribers: list[Subscriber] = []
+
+    def subscribe(self, subscriber: Subscriber) -> Callable[[], None]:
+        self._subscribers.append(subscriber)
+
+        def unsubscribe() -> None:
+            if subscriber in self._subscribers:
+                self._subscribers.remove(subscriber)
+
+        return unsubscribe
+
+    def publish(self, event: StageEvent) -> None:
+        for subscriber in list(self._subscribers):
+            result = subscriber(event)
+            if inspect.isawaitable(result):
+                asyncio.ensure_future(result)
+
+
+event_bus = EventBus()
+
+
+@asynccontextmanager
+async def timed_stage(
+    stage: str,
+    correlation_id: str | None = None,
+    **metadata: Any,
+) -> AsyncIterator[str]:
+    """Times a pipeline stage. Yields the correlation_id in use (generated if not passed in).
+
+    On exit, logs {stage, elapsed_ms, correlation_id} via structlog and publishes a StageEvent
+    to `event_bus`, timing runs even if the stage raises.
+    """
+    cid = correlation_id or str(uuid.uuid4())
+    start = time.perf_counter()
+    try:
+        yield cid
+    finally:
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        log.info("stage_completed", stage=stage, elapsed_ms=elapsed_ms, correlation_id=cid, **metadata)
+        event_bus.publish(
+            StageEvent(stage=stage, elapsed_ms=elapsed_ms, correlation_id=cid, metadata=metadata)
+        )
+
+
+======================================================================
+FILE: backend\app\models\__init__.py
+======================================================================
+"""Pydantic v2 contract shared between all 5 agents. Import from here, not submodules."""
+from app.models.appointment import Appointment, TimeSlot
+from app.models.classification import Classification
+from app.models.common import Attachment, Sender
+from app.models.customer import Customer
+from app.models.enums import (
+    AppointmentStatus,
+    Channel,
+    Sentiment,
+    TicketStatus,
+    Urgency,
+)
+from app.models.message import NormalizedMessage
+from app.models.pipeline import (
+    PipelineErrorEntry,
+    PipelineEvent,
+    PipelineState,
+    StageTiming,
+)
+from app.models.reply import ReplyDraft
+from app.models.ticket import Ticket, TicketDraft, TicketHistoryEntry
+
+__all__ = [
+    "Appointment",
+    "AppointmentStatus",
+    "Attachment",
+    "Channel",
+    "Classification",
+    "Customer",
+    "NormalizedMessage",
+    "PipelineErrorEntry",
+    "PipelineEvent",
+    "PipelineState",
+    "ReplyDraft",
+    "Sender",
+    "Sentiment",
+    "StageTiming",
+    "Ticket",
+    "TicketDraft",
+    "TicketHistoryEntry",
+    "TicketStatus",
+    "TimeSlot",
+    "Urgency",
+]
+
+
+======================================================================
+FILE: backend\app\models\appointment.py
+======================================================================
+"""The output of the Scheduler Agent."""
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import Field, model_validator
+
+from app.models.base import TaskmasterModel
+from app.models.enums import AppointmentStatus
+
+
+class TimeSlot(TaskmasterModel):
+    start: datetime
+    end: datetime
+
+    @model_validator(mode="after")
+    def _check_ordering(self) -> "TimeSlot":
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
+        return self
+
+
+class Appointment(TaskmasterModel):
+    appointment_id: str
+    ticket_number: str
+    appointment_type: str
+    assignee: str | None = None
+    proposed_slots: list[TimeSlot] = Field(default_factory=list)
+    confirmed_slot: TimeSlot | None = None
+    calendar_event_id: str | None = None
+    status: AppointmentStatus
+
+
+======================================================================
+FILE: backend\app\models\base.py
+======================================================================
+"""Shared base model config for every model in the agent contract."""
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict
+
+
+class TaskmasterModel(BaseModel):
+    """Base for every model crossing an agent boundary.
+
+    extra="forbid" is what makes this a real contract: a typo'd or stray field from an
+    agent fails validation loudly instead of silently passing through to the next stage.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        validate_assignment=True,
+    )
+
+
+======================================================================
+FILE: backend\app\models\classification.py
+======================================================================
+"""The output of the Classifier Agent."""
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import Field, ValidationInfo, field_validator
+
+from app.models.base import TaskmasterModel
+from app.models.common import validate_issue_type
+from app.models.enums import Sentiment, Urgency
+
+
+class Classification(TaskmasterModel):
+    issue_type: str
+    urgency: Urgency
+    summary: str
+    extracted_details: dict[str, Any] = Field(default_factory=dict)
+    missing_info: list[str] = Field(default_factory=list)
+    sentiment: Sentiment
+    frustration_score: float = Field(ge=0.0, le=1.0)
+    business_impact: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+
+    @field_validator("issue_type")
+    @classmethod
+    def _validate_issue_type(cls, v: str, info: ValidationInfo) -> str:
+        return validate_issue_type(v, info)
+
+
+======================================================================
+FILE: backend\app\models\common.py
+======================================================================
+"""Small pieces shared across multiple models: contact info, attachments, issue_type validation."""
+from __future__ import annotations
+
+from pydantic import ValidationInfo
+
+from app.models.base import TaskmasterModel
+
+
+class Sender(TaskmasterModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    company: str | None = None
+
+
+class Attachment(TaskmasterModel):
+    filename: str
+    content_type: str
+    url: str
+    size_bytes: int | None = None
+
+
+def validate_issue_type(v: str, info: ValidationInfo) -> str:
+    """Validates issue_type against the active vertical's taxonomy, when supplied.
+
+    The taxonomy itself lives in app/verticals config packs, not here. Callers that care about
+    enforcement pass it in via Pydantic's validation context:
+
+        Classification.model_validate(data, context={"valid_issue_types": vertical_config.issue_types})
+
+    Without a context, only a basic non-empty check runs — this keeps the model usable before
+    app/verticals exists, and keeps taxonomy data out of agent/model code entirely.
+    """
+    v = v.strip()
+    if not v:
+        raise ValueError("issue_type must not be empty")
+    allowed = (info.context or {}).get("valid_issue_types") if info.context else None
+    if allowed is not None and v not in allowed:
+        raise ValueError(f"issue_type '{v}' is not in the active vertical's taxonomy: {sorted(allowed)}")
+    return v
+
+
+======================================================================
+FILE: backend\app\models\customer.py
+======================================================================
+"""Customer profile records, aggregated by the repository layer from ticket activity."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from pydantic import Field
+
+from app.models.base import TaskmasterModel
+
+
+class Customer(TaskmasterModel):
+    customer_id: str
+    vertical: str
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    company: str | None = None
+    first_seen_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_seen_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ticket_count: int = Field(default=0, ge=0)
+
+
+======================================================================
+FILE: backend\app\models\enums.py
+======================================================================
+"""Fixed vocabularies shared across every vertical.
+
+issue_type is deliberately NOT here — it is a vertical-defined taxonomy validated at
+runtime (see models.common.validate_issue_type), never a hardcoded enum.
+"""
+from __future__ import annotations
+
+from enum import Enum
+
+
+class Channel(str, Enum):
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+    WEB_FORM = "WEB_FORM"
+    SLACK = "SLACK"
+    VOICE = "VOICE"
+
+
+class Urgency(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class TicketStatus(str, Enum):
+    NEW = "NEW"
+    OPEN = "OPEN"
+    SCHEDULED = "SCHEDULED"
+    IN_PROGRESS = "IN_PROGRESS"
+    WAITING_ON_CUSTOMER = "WAITING_ON_CUSTOMER"
+    RESOLVED = "RESOLVED"
+    CLOSED = "CLOSED"
+
+
+class Sentiment(str, Enum):
+    CALM = "CALM"
+    ANNOYED = "ANNOYED"
+    FRUSTRATED = "FRUSTRATED"
+    ANGRY = "ANGRY"
+
+
+class AppointmentStatus(str, Enum):
+    PROPOSED = "PROPOSED"
+    CONFIRMED = "CONFIRMED"
+    CANCELLED = "CANCELLED"
+    COMPLETED = "COMPLETED"
+
+
+======================================================================
+FILE: backend\app\models\message.py
+======================================================================
+"""The output of the Intake Agent: one internal schema for messages from every channel."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from pydantic import Field
+
+from app.models.base import TaskmasterModel
+from app.models.common import Attachment, Sender
+from app.models.enums import Channel
+
+
+class NormalizedMessage(TaskmasterModel):
+    intake_id: str
+    vertical: str
+    channel: Channel
+    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    sender: Sender
+    subject: str | None = None
+    body_text: str
+    body_html: str | None = None
+    language: str | None = None
+    transcript: str | None = None
+    audio_ref: str | None = None
+    attachments: list[Attachment] = Field(default_factory=list)
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+======================================================================
+FILE: backend\app\models\pipeline.py
+======================================================================
+"""PipelineState: the full state threaded through Intake -> Classifier -> Ticket -> Reply -> Scheduler."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from pydantic import Field
+
+from app.models.appointment import Appointment
+from app.models.base import TaskmasterModel
+from app.models.classification import Classification
+from app.models.message import NormalizedMessage
+from app.models.reply import ReplyDraft
+from app.models.ticket import Ticket
+
+
+class StageTiming(TaskmasterModel):
+    stage: str
+    elapsed_ms: float = Field(ge=0.0)
+    correlation_id: str
+
+
+class PipelineEvent(TaskmasterModel):
+    event: str
+    stage: str | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineErrorEntry(TaskmasterModel):
+    stage: str
+    message: str
+    error_type: str
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PipelineState(TaskmasterModel):
+    message: NormalizedMessage
+    classification: Classification | None = None
+    ticket: Ticket | None = None
+    reply: ReplyDraft | None = None
+    appointment: Appointment | None = None
+    stage_timings: list[StageTiming] = Field(default_factory=list)
+    events: list[PipelineEvent] = Field(default_factory=list)
+    errors: list[PipelineErrorEntry] = Field(default_factory=list)
+
+
+======================================================================
+FILE: backend\app\models\reply.py
+======================================================================
+"""The output of the Reply Agent."""
+from __future__ import annotations
+
+from pydantic import Field
+
+from app.models.base import TaskmasterModel
+
+
+class ReplyDraft(TaskmasterModel):
+    subject: str
+    body: str
+    tone: str
+    language: str
+    questions_asked: list[str] = Field(default_factory=list)
+    includes_scheduling_link: bool = False
+    requires_human_review: bool = False
+
+
+======================================================================
+FILE: backend\app\models\ticket.py
+======================================================================
+"""The output of the Ticket Agent."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from pydantic import Field, ValidationInfo, field_validator
+
+from app.models.base import TaskmasterModel
+from app.models.common import Sender, validate_issue_type
+from app.models.enums import Sentiment, TicketStatus, Urgency
+
+
+class TicketHistoryEntry(TaskmasterModel):
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    actor: str
+    action: str
+    notes: str | None = None
+
+
+class Ticket(TaskmasterModel):
+    ticket_number: str
+    intake_id: str
+    vertical: str
+    customer: Sender
+    issue_type: str
+    priority: Urgency
+    status: TicketStatus
+    title: str
+    description: str
+    extracted_details: dict[str, Any] = Field(default_factory=dict)
+    missing_info: list[str] = Field(default_factory=list)
+    sentiment: Sentiment
+    confidence: float = Field(ge=0.0, le=1.0)
+    assigned_to: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    history: list[TicketHistoryEntry] = Field(default_factory=list)
+
+    @field_validator("issue_type")
+    @classmethod
+    def _validate_issue_type(cls, v: str, info: ValidationInfo) -> str:
+        return validate_issue_type(v, info)
+
+
+class TicketDraft(TaskmasterModel):
+    """Everything needed to create a Ticket except the repo-assigned ticket_number, timestamps,
+    and history. Passed to TicketRepository.create_ticket, which fills in the rest.
+    """
+
+    intake_id: str
+    vertical: str
+    customer: Sender
+    issue_type: str
+    priority: Urgency
+    status: TicketStatus = TicketStatus.NEW
+    title: str
+    description: str
+    extracted_details: dict[str, Any] = Field(default_factory=dict)
+    missing_info: list[str] = Field(default_factory=list)
+    sentiment: Sentiment
+    confidence: float = Field(ge=0.0, le=1.0)
+    assigned_to: str | None = None
+
+    @field_validator("issue_type")
+    @classmethod
+    def _validate_issue_type(cls, v: str, info: ValidationInfo) -> str:
+        return validate_issue_type(v, info)
+
+
+======================================================================
+FILE: backend\app\services\__init__.py
+======================================================================
+"""Persistence layer. Agents depend on this package's TicketRepository interface, never on a
+concrete implementation or the Firestore SDK directly.
+"""
+from app.services.repository import (
+    RepoError,
+    TicketNotFoundError,
+    TicketPage,
+    TicketRepository,
+    get_repository,
+)
+
+__all__ = [
+    "RepoError",
+    "TicketNotFoundError",
+    "TicketPage",
+    "TicketRepository",
+    "get_repository",
+]
+
+
+======================================================================
+FILE: backend\app\services\firestore_repo.py
+======================================================================
+"""Firestore-backed TicketRepository. Selected by get_repository() when ENV != "local".
+
+Required composite indexes (Firestore raises FailedPrecondition with an auto-create link at query
+time if these are missing; this is the reference list for firestore.indexes.json):
+
+    tickets: (vertical ASC, created_at DESC, ticket_number DESC)               -- base list_tickets query
+    tickets: (vertical ASC, status ASC, created_at DESC, ticket_number DESC)
+    tickets: (vertical ASC, priority ASC, created_at DESC, ticket_number DESC)
+    tickets: (vertical ASC, issue_type ASC, created_at DESC, ticket_number DESC)
+    -- combining two or more optional filters at once (e.g. status + priority) needs one more
+    -- composite index per combination in use; add as Firestore's error links prompt.
+    -- `search` is filtered client-side (Firestore has no native full-text search), so it needs no
+    -- index of its own.
+
+Collections (all prefixed by settings.FIRESTORE_COLLECTION_PREFIX): "{prefix}_tickets",
+"{prefix}_customers", "{prefix}_pipeline_runs", "{prefix}_counters".
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from google.cloud import firestore
+
+from app.config import settings
+from app.models import (
+    Customer,
+    PipelineState,
+    Sender,
+    Ticket,
+    TicketDraft,
+    TicketHistoryEntry,
+    TicketStatus,
+    Urgency,
+)
+from app.services.repository import TicketNotFoundError, TicketPage, decode_cursor, encode_cursor
+
+MAX_SEARCH_SCAN = 500
+
+
+def _customer_key(email: str | None, phone: str | None) -> str | None:
+    """Customer identity convention: normalized email, else phone. Mirrors in_memory_repo.py."""
+    if email:
+        return email.strip().lower()
+    if phone:
+        return phone.strip()
+    return None
+
+
+class FirestoreRepo:
+    def __init__(self) -> None:
+        self._db = firestore.AsyncClient(project=settings.GCP_PROJECT_ID)
+        self._prefix = settings.FIRESTORE_COLLECTION_PREFIX
+
+    def _tickets_col(self):
+        return self._db.collection(f"{self._prefix}_tickets")
+
+    def _customers_col(self):
+        return self._db.collection(f"{self._prefix}_customers")
+
+    def _pipeline_runs_col(self):
+        return self._db.collection(f"{self._prefix}_pipeline_runs")
+
+    def _counters_col(self):
+        return self._db.collection(f"{self._prefix}_counters")
+
+    @staticmethod
+    def _ticket_doc_id(vertical: str, ticket_number: str) -> str:
+        # Required, not just convenient: ticket numbers are only unique per vertical (see plan /
+        # GEMINI.md), so the vertical must be baked into the document id.
+        return f"{vertical}__{ticket_number}"
+
+    async def _next_ticket_number(self, vertical: str) -> str:
+        """Reads+increments {prefix}_counters/{vertical} inside a Firestore transaction.
+
+        Safety: Firestore transactions are optimistic. If another concurrent transaction touches
+        this same counter document between this read and this write, Firestore aborts it and the
+        client library automatically retries the whole transaction function. That makes this
+        read-increment-write atomic under many simultaneous create_ticket calls with no explicit
+        locking required.
+        """
+        counter_ref = self._counters_col().document(vertical)
+        transaction = self._db.transaction()
+
+        @firestore.async_transactional
+        async def _increment(transaction: firestore.AsyncTransaction) -> int:
+            snapshot = None
+            async for s in transaction.get(counter_ref):
+                snapshot = s
+            current = snapshot.get("value") if snapshot is not None and snapshot.exists else 0
+            next_value = current + 1
+            transaction.set(counter_ref, {"value": next_value})
+            return next_value
+
+        next_value = await _increment(transaction)
+        return f"TK-{next_value:04d}"
+
+    def _upsert_customer(self, transaction: firestore.AsyncTransaction, vertical: str, customer: Sender, now: datetime) -> None:
+        key = _customer_key(customer.email, customer.phone)
+        if key is None:
+            return
+        doc_ref = self._customers_col().document(f"{vertical}:{key}")
+        # Staged as part of the caller's transaction/batch context by the caller.
+        transaction.set(
+            doc_ref,
+            {
+                "customer_id": f"{vertical}:{key}",
+                "vertical": vertical,
+                "name": customer.name,
+                "email": customer.email,
+                "phone": customer.phone,
+                "company": customer.company,
+                "last_seen_at": now.isoformat(),
+                "first_seen_at": firestore.SERVER_TIMESTAMP,
+                "ticket_count": firestore.Increment(1),
+            },
+            merge=True,
+        )
+
+    async def create_ticket(self, draft: TicketDraft) -> Ticket:
+        ticket_number = await self._next_ticket_number(draft.vertical)
+        now = datetime.now(timezone.utc)
+        ticket = Ticket(
+            ticket_number=ticket_number,
+            intake_id=draft.intake_id,
+            vertical=draft.vertical,
+            customer=draft.customer,
+            issue_type=draft.issue_type,
+            priority=draft.priority,
+            status=draft.status,
+            title=draft.title,
+            description=draft.description,
+            extracted_details=draft.extracted_details,
+            missing_info=draft.missing_info,
+            sentiment=draft.sentiment,
+            confidence=draft.confidence,
+            assigned_to=draft.assigned_to,
+            created_at=now,
+            updated_at=now,
+            history=[TicketHistoryEntry(actor="system", action="ticket_created", timestamp=now)],
+        )
+        doc_ref = self._tickets_col().document(self._ticket_doc_id(draft.vertical, ticket_number))
+        await doc_ref.set(ticket.model_dump(mode="json"))
+
+        # Kept as a separate transaction from the ticket write for simplicity - a stricter system
+        # would combine both into one transaction. Skipped entirely if the customer has neither
+        # email nor phone to key on.
+        if _customer_key(draft.customer.email, draft.customer.phone) is not None:
+            customer_transaction = self._db.transaction()
+
+            @firestore.async_transactional
+            async def _upsert(transaction: firestore.AsyncTransaction) -> None:
+                self._upsert_customer(transaction, draft.vertical, draft.customer, now)
+
+            await _upsert(customer_transaction)
+
+        return ticket
+
+    async def get_ticket(self, ticket_number: str, *, vertical: str) -> Ticket | None:
+        snapshot = await self._tickets_col().document(self._ticket_doc_id(vertical, ticket_number)).get()
+        if not snapshot.exists:
+            return None
+        return Ticket.model_validate(snapshot.to_dict())
+
+    async def _mutate_ticket(
+        self, ticket_number: str, *, vertical: str, entry: TicketHistoryEntry, new_status: TicketStatus | None
+    ) -> Ticket:
+        doc_ref = self._tickets_col().document(self._ticket_doc_id(vertical, ticket_number))
+        transaction = self._db.transaction()
+
+        @firestore.async_transactional
+        async def _apply(transaction: firestore.AsyncTransaction) -> Ticket:
+            snapshot = None
+            async for s in transaction.get(doc_ref):
+                snapshot = s
+            if snapshot is None or not snapshot.exists:
+                raise TicketNotFoundError(vertical, ticket_number)
+            ticket = Ticket.model_validate(snapshot.to_dict())
+            updates: dict = {
+                "history": [*ticket.history, entry],
+                "updated_at": datetime.now(timezone.utc),
+            }
+            if new_status is not None:
+                updates["status"] = new_status
+            updated = ticket.model_copy(update=updates)
+            transaction.set(doc_ref, updated.model_dump(mode="json"))
+            return updated
+
+        return await _apply(transaction)
+
+    async def update_ticket_status(
+        self,
+        ticket_number: str,
+        *,
+        vertical: str,
+        status: TicketStatus,
+        actor: str,
+        notes: str | None = None,
+    ) -> Ticket:
+        entry = TicketHistoryEntry(actor=actor, action=f"status_changed_to_{status.value}", notes=notes)
+        return await self._mutate_ticket(ticket_number, vertical=vertical, entry=entry, new_status=status)
+
+    async def append_ticket_event(
+        self, ticket_number: str, *, vertical: str, entry: TicketHistoryEntry
+    ) -> Ticket:
+        return await self._mutate_ticket(ticket_number, vertical=vertical, entry=entry, new_status=None)
+
+    def _base_query(
+        self,
+        *,
+        vertical: str,
+        status: TicketStatus | None,
+        priority: Urgency | None,
+        category: str | None,
+    ):
+        query = self._tickets_col().where("vertical", "==", vertical)
+        if status is not None:
+            query = query.where("status", "==", status.value)
+        if priority is not None:
+            query = query.where("priority", "==", priority.value)
+        if category is not None:
+            query = query.where("issue_type", "==", category)
+        return query.order_by("created_at", direction=firestore.Query.DESCENDING).order_by(
+            "ticket_number", direction=firestore.Query.DESCENDING
+        )
+
+    async def list_tickets(
+        self,
+        *,
+        vertical: str,
+        status: TicketStatus | None = None,
+        priority: Urgency | None = None,
+        category: str | None = None,
+        search: str | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> TicketPage:
+        query = self._base_query(vertical=vertical, status=status, priority=priority, category=category)
+
+        if cursor:
+            cursor_created_at, cursor_ticket_number = decode_cursor(cursor)
+            query = query.start_after({"created_at": cursor_created_at.isoformat(), "ticket_number": cursor_ticket_number})
+
+        if not search:
+            docs = [Ticket.model_validate(d.to_dict()) async for d in query.limit(limit).stream()]
+            next_cursor = (
+                encode_cursor(docs[-1].created_at, docs[-1].ticket_number) if len(docs) == limit else None
+            )
+            return TicketPage(items=docs, next_cursor=next_cursor)
+
+        # Firestore has no native full-text search. Scan a bounded window and filter client-side.
+        # The cursor always advances to the last SCANNED doc (not the last MATCHED one), so paging
+        # never skips a document - a page may return fewer than `limit` matches; a non-null
+        # next_cursor just means "keep scanning." A real search index (Algolia/Typesense/Cloud
+        # Search) should replace this before result volume makes the scan expensive.
+        needle = search.lower()
+        scanned = [d async for d in query.limit(MAX_SEARCH_SCAN).stream()]
+        scanned_tickets = [Ticket.model_validate(d.to_dict()) for d in scanned]
+        matches = [
+            t for t in scanned_tickets if needle in t.title.lower() or needle in t.description.lower()
+        ][:limit]
+        next_cursor = None
+        if len(scanned_tickets) == MAX_SEARCH_SCAN:
+            last = scanned_tickets[-1]
+            next_cursor = encode_cursor(last.created_at, last.ticket_number)
+        return TicketPage(items=matches, next_cursor=next_cursor)
+
+    async def find_customer_by_email_or_phone(
+        self, *, vertical: str, email: str | None = None, phone: str | None = None
+    ) -> Customer | None:
+        key = _customer_key(email, phone)
+        if key is None:
+            raise ValueError("find_customer_by_email_or_phone requires email or phone")
+        snapshot = await self._customers_col().document(f"{vertical}:{key}").get()
+        if not snapshot.exists:
+            return None
+        return Customer.model_validate(snapshot.to_dict())
+
+    async def get_customer_history(
+        self,
+        *,
+        vertical: str,
+        email: str | None = None,
+        phone: str | None = None,
+        limit: int = 10,
+    ) -> list[Ticket]:
+        if not email and not phone:
+            raise ValueError("get_customer_history requires email or phone")
+
+        # No customer_id FK on Ticket, so this queries tickets directly rather than joining
+        # through the customers collection.
+        field, value = ("customer.email", email.strip().lower()) if email else ("customer.phone", phone.strip())
+        query = (
+            self._tickets_col()
+            .where("vertical", "==", vertical)
+            .where(field, "==", value)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        return [Ticket.model_validate(d.to_dict()) async for d in query.stream()]
+
+    async def save_pipeline_state(self, state: PipelineState) -> str:
+        doc_id = state.message.intake_id
+        payload = state.model_dump(mode="json")
+        payload["vertical"] = state.message.vertical
+        await self._pipeline_runs_col().document(doc_id).set(payload)
+        return doc_id
+
+
+======================================================================
+FILE: backend\app\services\in_memory_repo.py
+======================================================================
+"""In-memory twin of FirestoreRepo, same TicketRepository interface. Selected when ENV=local so
+the whole pipeline (and every test) runs with zero GCP credentials.
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+
+from app.models import (
+    Customer,
+    PipelineState,
+    Sender,
+    Ticket,
+    TicketDraft,
+    TicketHistoryEntry,
+    TicketStatus,
+    Urgency,
+)
+from app.services.repository import TicketNotFoundError, TicketPage, decode_cursor, encode_cursor
+
+
+def _customer_key(email: str | None, phone: str | None) -> str | None:
+    """Customer identity convention: normalized email, else phone. See app/services/repository.py."""
+    if email:
+        return email.strip().lower()
+    if phone:
+        return phone.strip()
+    return None
+
+
+class InMemoryRepo:
+    def __init__(self) -> None:
+        self._tickets: dict[str, Ticket] = {}
+        self._customers: dict[str, Customer] = {}
+        self._pipeline_runs: dict[str, PipelineState] = {}
+        self._counters: dict[str, int] = {}
+        # asyncio is single-threaded/cooperative: without this lock, two concurrent create_ticket
+        # calls could both read the same counter value before either writes it back, since await
+        # points are the only place execution can interleave. One lock around every mutating method
+        # closes that window - the same atomicity guarantee FirestoreRepo gets from a transaction,
+        # via a different mechanism.
+        self._lock = asyncio.Lock()
+
+    @staticmethod
+    def _ticket_key(vertical: str, ticket_number: str) -> str:
+        return f"{vertical}__{ticket_number}"
+
+    def _next_ticket_number_locked(self, vertical: str) -> str:
+        next_value = self._counters.get(vertical, 0) + 1
+        self._counters[vertical] = next_value
+        return f"TK-{next_value:04d}"
+
+    def _upsert_customer_locked(self, vertical: str, customer: Sender, now: datetime) -> None:
+        key = _customer_key(customer.email, customer.phone)
+        if key is None:
+            return
+        doc_id = f"{vertical}:{key}"
+        existing = self._customers.get(doc_id)
+        if existing is None:
+            self._customers[doc_id] = Customer(
+                customer_id=doc_id,
+                vertical=vertical,
+                name=customer.name,
+                email=customer.email,
+                phone=customer.phone,
+                company=customer.company,
+                first_seen_at=now,
+                last_seen_at=now,
+                ticket_count=1,
+            )
+        else:
+            self._customers[doc_id] = existing.model_copy(
+                update={
+                    "last_seen_at": now,
+                    "ticket_count": existing.ticket_count + 1,
+                    "name": customer.name or existing.name,
+                    "company": customer.company or existing.company,
+                }
+            )
+
+    async def create_ticket(self, draft: TicketDraft) -> Ticket:
+        async with self._lock:
+            ticket_number = self._next_ticket_number_locked(draft.vertical)
+            now = datetime.now(timezone.utc)
+            ticket = Ticket(
+                ticket_number=ticket_number,
+                intake_id=draft.intake_id,
+                vertical=draft.vertical,
+                customer=draft.customer,
+                issue_type=draft.issue_type,
+                priority=draft.priority,
+                status=draft.status,
+                title=draft.title,
+                description=draft.description,
+                extracted_details=draft.extracted_details,
+                missing_info=draft.missing_info,
+                sentiment=draft.sentiment,
+                confidence=draft.confidence,
+                assigned_to=draft.assigned_to,
+                created_at=now,
+                updated_at=now,
+                history=[TicketHistoryEntry(actor="system", action="ticket_created", timestamp=now)],
+            )
+            self._tickets[self._ticket_key(draft.vertical, ticket_number)] = ticket
+            self._upsert_customer_locked(draft.vertical, draft.customer, now)
+            return ticket
+
+    async def get_ticket(self, ticket_number: str, *, vertical: str) -> Ticket | None:
+        return self._tickets.get(self._ticket_key(vertical, ticket_number))
+
+    async def _mutate_ticket_locked(
+        self, ticket_number: str, *, vertical: str, entry: TicketHistoryEntry, new_status: TicketStatus | None
+    ) -> Ticket:
+        key = self._ticket_key(vertical, ticket_number)
+        async with self._lock:
+            ticket = self._tickets.get(key)
+            if ticket is None:
+                raise TicketNotFoundError(vertical, ticket_number)
+            updates: dict = {
+                "history": [*ticket.history, entry],
+                "updated_at": datetime.now(timezone.utc),
+            }
+            if new_status is not None:
+                updates["status"] = new_status
+            updated = ticket.model_copy(update=updates)
+            self._tickets[key] = updated
+            return updated
+
+    async def update_ticket_status(
+        self,
+        ticket_number: str,
+        *,
+        vertical: str,
+        status: TicketStatus,
+        actor: str,
+        notes: str | None = None,
+    ) -> Ticket:
+        entry = TicketHistoryEntry(actor=actor, action=f"status_changed_to_{status.value}", notes=notes)
+        return await self._mutate_ticket_locked(ticket_number, vertical=vertical, entry=entry, new_status=status)
+
+    async def append_ticket_event(
+        self, ticket_number: str, *, vertical: str, entry: TicketHistoryEntry
+    ) -> Ticket:
+        return await self._mutate_ticket_locked(ticket_number, vertical=vertical, entry=entry, new_status=None)
+
+    async def list_tickets(
+        self,
+        *,
+        vertical: str,
+        status: TicketStatus | None = None,
+        priority: Urgency | None = None,
+        category: str | None = None,
+        search: str | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> TicketPage:
+        candidates = [t for t in self._tickets.values() if t.vertical == vertical]
+        if status is not None:
+            candidates = [t for t in candidates if t.status == status]
+        if priority is not None:
+            candidates = [t for t in candidates if t.priority == priority]
+        if category is not None:
+            candidates = [t for t in candidates if t.issue_type == category]
+        if search:
+            needle = search.lower()
+            candidates = [
+                t for t in candidates if needle in t.title.lower() or needle in t.description.lower()
+            ]
+
+        candidates.sort(key=lambda t: (t.created_at, t.ticket_number), reverse=True)
+
+        if cursor:
+            cursor_created_at, cursor_ticket_number = decode_cursor(cursor)
+            candidates = [
+                t for t in candidates if (t.created_at, t.ticket_number) < (cursor_created_at, cursor_ticket_number)
+            ]
+
+        page_items = candidates[:limit]
+        next_cursor = None
+        if len(candidates) > limit:
+            last = page_items[-1]
+            next_cursor = encode_cursor(last.created_at, last.ticket_number)
+        return TicketPage(items=page_items, next_cursor=next_cursor)
+
+    async def find_customer_by_email_or_phone(
+        self, *, vertical: str, email: str | None = None, phone: str | None = None
+    ) -> Customer | None:
+        key = _customer_key(email, phone)
+        if key is None:
+            raise ValueError("find_customer_by_email_or_phone requires email or phone")
+        return self._customers.get(f"{vertical}:{key}")
+
+    async def get_customer_history(
+        self,
+        *,
+        vertical: str,
+        email: str | None = None,
+        phone: str | None = None,
+        limit: int = 10,
+    ) -> list[Ticket]:
+        if not email and not phone:
+            raise ValueError("get_customer_history requires email or phone")
+        normalized_email = email.strip().lower() if email else None
+        normalized_phone = phone.strip() if phone else None
+        matches = [
+            t
+            for t in self._tickets.values()
+            if t.vertical == vertical
+            and (
+                (normalized_email and t.customer.email and t.customer.email.strip().lower() == normalized_email)
+                or (normalized_phone and t.customer.phone and t.customer.phone.strip() == normalized_phone)
+            )
+        ]
+        matches.sort(key=lambda t: (t.created_at, t.ticket_number), reverse=True)
+        return matches[:limit]
+
+    async def save_pipeline_state(self, state: PipelineState) -> str:
+        doc_id = state.message.intake_id
+        async with self._lock:
+            self._pipeline_runs[doc_id] = state
+        return doc_id
+
+
+======================================================================
+FILE: backend\app\services\repository.py
+======================================================================
+"""The ticket/customer/pipeline-run persistence contract. Agents depend on TicketRepository and
+get_repository() only — never on FirestoreRepo or InMemoryRepo directly, and never touch the
+Firestore SDK.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Protocol
+
+from app.config import settings
+from app.models import Customer, PipelineState, Ticket, TicketDraft, TicketHistoryEntry, TicketStatus, Urgency
+from app.models.base import TaskmasterModel
+
+
+class RepoError(Exception):
+    """Base for all repository errors."""
+
+
+class TicketNotFoundError(RepoError):
+    def __init__(self, vertical: str, ticket_number: str) -> None:
+        super().__init__(f"No ticket '{ticket_number}' found for vertical '{vertical}'")
+        self.vertical = vertical
+        self.ticket_number = ticket_number
+
+
+class TicketPage(TaskmasterModel):
+    items: list[Ticket]
+    next_cursor: str | None = None
+
+
+def encode_cursor(created_at: datetime, ticket_number: str) -> str:
+    """Opaque pagination cursor. Same format for both repo implementations."""
+    return f"{created_at.isoformat()}::{ticket_number}"
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, str]:
+    created_at_str, _, ticket_number = cursor.partition("::")
+    return datetime.fromisoformat(created_at_str), ticket_number
+
+
+class TicketRepository(Protocol):
+    async def create_ticket(self, draft: TicketDraft) -> Ticket: ...
+
+    async def get_ticket(self, ticket_number: str, *, vertical: str) -> Ticket | None: ...
+
+    async def update_ticket_status(
+        self,
+        ticket_number: str,
+        *,
+        vertical: str,
+        status: TicketStatus,
+        actor: str,
+        notes: str | None = None,
+    ) -> Ticket: ...
+
+    async def list_tickets(
+        self,
+        *,
+        vertical: str,
+        status: TicketStatus | None = None,
+        priority: Urgency | None = None,
+        category: str | None = None,
+        search: str | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> TicketPage: ...
+
+    async def find_customer_by_email_or_phone(
+        self, *, vertical: str, email: str | None = None, phone: str | None = None
+    ) -> Customer | None: ...
+
+    async def get_customer_history(
+        self,
+        *,
+        vertical: str,
+        email: str | None = None,
+        phone: str | None = None,
+        limit: int = 10,
+    ) -> list[Ticket]: ...
+
+    async def append_ticket_event(
+        self, ticket_number: str, *, vertical: str, entry: TicketHistoryEntry
+    ) -> Ticket: ...
+
+    async def save_pipeline_state(self, state: PipelineState) -> str: ...
+
+
+_repo_instance: TicketRepository | None = None
+
+
+def get_repository() -> TicketRepository:
+    """Process-wide repo singleton. InMemoryRepo for ENV=local, FirestoreRepo otherwise.
+
+    The FirestoreRepo import happens inside this branch so that importing this module (or running
+    with ENV=local) never requires google-cloud-firestore credentials to be available.
+    """
+    global _repo_instance
+    if _repo_instance is None:
+        if settings.ENV == "local":
+            from app.services.in_memory_repo import InMemoryRepo
+
+            _repo_instance = InMemoryRepo()
+        else:
+            from app.services.firestore_repo import FirestoreRepo
+
+            _repo_instance = FirestoreRepo()
+    return _repo_instance
+
+
+======================================================================
+FILE: backend\app\verticals\__init__.py
+======================================================================
+"""The vertical configuration layer: config packs, not code, is what makes Taskmaster vertical-agnostic."""
+from app.verticals.base import VerticalConfig
+from app.verticals.loader import (
+    VerticalConfigError,
+    get_active_vertical,
+    get_vertical,
+    list_available_verticals,
+)
+
+__all__ = [
+    "VerticalConfig",
+    "VerticalConfigError",
+    "get_active_vertical",
+    "get_vertical",
+    "list_available_verticals",
+]
+
+
+======================================================================
+FILE: backend\app\verticals\base.py
+======================================================================
+"""VerticalConfig: the schema every business-vertical config pack must satisfy.
+
+This is THE config layer (GEMINI.md): taxonomy, urgency rules, tone, appointment types, SLAs, and
+routing all live here as data, never as code in app/agents/*.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import Field, field_validator, model_validator
+
+from app.models.base import TaskmasterModel
+from app.models.enums import Urgency
+
+
+class IssueType(TaskmasterModel):
+    name: str
+    description: str
+    examples: list[str] = Field(default_factory=list)
+
+
+class UrgencyRule(TaskmasterModel):
+    level: Urgency
+    definition: str
+    concrete_examples: list[str] = Field(default_factory=list)
+
+
+class RequiredEntity(TaskmasterModel):
+    name: str
+    description: str
+
+
+class AppointmentType(TaskmasterModel):
+    name: str
+    duration_minutes: int = Field(gt=0)
+    requires_onsite: bool
+    triggers_when: str
+
+
+class DayHours(TaskmasterModel):
+    open: str | None = None
+    close: str | None = None
+
+    @field_validator("open", "close")
+    @classmethod
+    def _validate_time_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%H:%M")
+        except ValueError as exc:
+            raise ValueError(f"'{v}' is not a valid 24h HH:MM time") from exc
+        return v
+
+    @model_validator(mode="after")
+    def _check_both_or_neither(self) -> "DayHours":
+        if (self.open is None) != (self.close is None):
+            raise ValueError("open and close must both be set, or both be null (closed)")
+        return self
+
+
+class BusinessHours(TaskmasterModel):
+    monday: DayHours
+    tuesday: DayHours
+    wednesday: DayHours
+    thursday: DayHours
+    friday: DayHours
+    saturday: DayHours
+    sunday: DayHours
+
+
+class SlaTarget(TaskmasterModel):
+    first_response_minutes: int = Field(gt=0)
+    resolution_hours: float | None = Field(default=None, gt=0)
+
+
+class RoutingRule(TaskmasterModel):
+    issue_type: str
+    urgency: Urgency | None = None  # None = wildcard, matches any urgency for this issue_type
+    assignee_role: str
+
+
+class VerticalConfig(TaskmasterModel):
+    key: str
+    display_name: str
+    business_description: str
+    issue_types: list[IssueType] = Field(min_length=1)
+    urgency_rules: list[UrgencyRule] = Field(min_length=1)
+    required_entities: list[RequiredEntity] = Field(default_factory=list)
+    appointment_types: list[AppointmentType] = Field(default_factory=list)
+    reply_tone: str
+    business_hours: BusinessHours
+    timezone: str
+    sla_by_priority: dict[Urgency, SlaTarget]
+    routing_table: list[RoutingRule] = Field(default_factory=list)
+    default_assignee_role: str
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        v = v.strip()
+        if not v or " " in v or v != v.lower():
+            raise ValueError(f"key must be a non-empty lowercase slug with no spaces, got '{v}'")
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"'{v}' is not a valid IANA timezone name") from exc
+        return v
+
+    @model_validator(mode="after")
+    def _check_issue_type_names_unique(self) -> "VerticalConfig":
+        names = [it.name for it in self.issue_types]
+        if len(names) != len(set(names)):
+            raise ValueError(f"issue_types names must be unique, got duplicates in: {names}")
+        return self
+
+    @model_validator(mode="after")
+    def _check_urgency_rules_cover_all_levels(self) -> "VerticalConfig":
+        levels = {rule.level for rule in self.urgency_rules}
+        if levels != set(Urgency):
+            raise ValueError(
+                f"urgency_rules must cover exactly all Urgency levels {sorted(Urgency)}, got {sorted(levels)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_sla_covers_all_levels(self) -> "VerticalConfig":
+        levels = set(self.sla_by_priority)
+        if levels != set(Urgency):
+            raise ValueError(
+                f"sla_by_priority must cover exactly all Urgency levels {sorted(Urgency)}, got {sorted(levels)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_routing_table_issue_types_exist(self) -> "VerticalConfig":
+        valid_names = {it.name for it in self.issue_types}
+        for rule in self.routing_table:
+            if rule.issue_type not in valid_names:
+                raise ValueError(
+                    f"routing_table references unknown issue_type '{rule.issue_type}', "
+                    f"expected one of {sorted(valid_names)}"
+                )
+        return self
+
+    @property
+    def issue_type_names(self) -> set[str]:
+        """The exact collection to pass as context={"valid_issue_types": ...} to Classification/Ticket."""
+        return {it.name for it in self.issue_types}
+
+    def resolve_assignee(self, issue_type: str, urgency: Urgency) -> str:
+        """Exact (issue_type, urgency) match, then issue_type wildcard, then the vertical's default."""
+        for rule in self.routing_table:
+            if rule.issue_type == issue_type and rule.urgency == urgency:
+                return rule.assignee_role
+        for rule in self.routing_table:
+            if rule.issue_type == issue_type and rule.urgency is None:
+                return rule.assignee_role
+        return self.default_assignee_role
+
+
+======================================================================
+FILE: backend\app\verticals\loader.py
+======================================================================
+"""Loads, validates, and caches vertical config packs from app/verticals/packs/*.yaml."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+from pydantic import ValidationError
+
+from app.config import settings
+from app.verticals.base import VerticalConfig
+
+PACKS_DIR = Path(__file__).parent / "packs"
+
+_cache: dict[str, VerticalConfig] = {}
+
+
+class VerticalConfigError(Exception):
+    """Raised when a vertical config pack is missing, malformed, or invalid."""
+
+
+def load_vertical_pack(key: str, *, packs_dir: Path = PACKS_DIR) -> VerticalConfig:
+    """Reads, parses, and validates a single vertical config pack. Does not use the cache."""
+    path = packs_dir / f"{key}.yaml"
+
+    if not path.exists():
+        available = sorted(p.stem for p in packs_dir.glob("*.yaml")) if packs_dir.exists() else []
+        raise VerticalConfigError(
+            f"No vertical config pack found for '{key}' at {path}. Available packs: {available}"
+        )
+
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise VerticalConfigError(f"Vertical pack '{key}' at {path} is not valid YAML: {exc}") from exc
+
+    if not isinstance(raw, dict):
+        raise VerticalConfigError(f"Vertical pack '{key}' at {path} must parse to a mapping, got {type(raw).__name__}")
+
+    try:
+        config = VerticalConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise VerticalConfigError(f"Vertical pack '{key}' at {path} failed validation:\n{exc}") from exc
+
+    if config.key != key:
+        raise VerticalConfigError(
+            f"Vertical pack at {path} declares key='{config.key}' but is filed under '{key}.yaml'. "
+            "The key field and filename must match."
+        )
+
+    return config
+
+
+def get_vertical(key: str) -> VerticalConfig:
+    """Cached accessor for a vertical config pack by key."""
+    if key not in _cache:
+        _cache[key] = load_vertical_pack(key)
+    return _cache[key]
+
+
+def get_active_vertical() -> VerticalConfig:
+    """Returns the config pack for the currently configured ACTIVE_VERTICAL."""
+    return get_vertical(settings.ACTIVE_VERTICAL)
+
+
+def list_available_verticals() -> list[str]:
+    """Keys of every vertical config pack present in app/verticals/packs/."""
+    if not PACKS_DIR.exists():
+        return []
+    return sorted(p.stem for p in PACKS_DIR.glob("*.yaml"))
+
+
+======================================================================
+FILE: backend\app\verticals\packs\dental_clinic.yaml
+======================================================================
+# Taskmaster vertical config pack — Dental Clinic
+key: dental_clinic
+display_name: "Dental Clinic Front Desk"
+business_description: >
+  Front-desk intake for a general dentistry practice handling appointment requests, pain/
+  emergency triage, insurance questions, and rescheduling.
+
+issue_types:
+  - name: appointment_request
+    description: New patient or routine appointment requests (cleanings, checkups, procedures).
+    examples:
+      - "I'd like to book my 6-month cleaning"
+      - "New patient here, can I get a first appointment?"
+  - name: pain_or_emergency
+    description: Active tooth or gum pain, swelling, or dental trauma.
+    examples:
+      - "I have a bad toothache since last night"
+      - "My tooth got knocked out an hour ago"
+      - "My face is swollen and it hurts to open my mouth"
+  - name: insurance_question
+    description: Coverage, billing, claims, and payment questions.
+    examples:
+      - "Do you accept my insurance?"
+      - "Why was I billed for last month's cleaning?"
+  - name: reschedule_cancel
+    description: Requests to move or cancel an existing appointment.
+    examples:
+      - "I need to reschedule this week's appointment"
+      - "Can I cancel my Friday visit?"
+  - name: other
+    description: General questions not covered by the categories above.
+    examples:
+      - "What are your holiday hours?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: Active severe pain, facial swelling, uncontrolled bleeding, or dental trauma.
+    concrete_examples:
+      - "My tooth got knocked out an hour ago"
+      - "My face is swollen and I can't open my mouth"
+      - "I'm bleeding and it won't stop"
+  - level: HIGH
+    definition: Significant pain or a broken/chipped tooth without a clear emergency.
+    concrete_examples:
+      - "I have a bad toothache since last night"
+      - "A filling fell out and it hurts to eat"
+  - level: MEDIUM
+    definition: Mild discomfort, or a time-sensitive scheduling need.
+    concrete_examples:
+      - "Mild sensitivity to cold, nothing urgent"
+      - "Need to reschedule this week's appointment"
+  - level: LOW
+    definition: Routine scheduling or informational questions.
+    concrete_examples:
+      - "I'd like to book my 6-month cleaning"
+      - "Do you accept my insurance?"
+
+required_entities:
+  - name: symptom_description
+    description: What the patient is experiencing, in their own words.
+  - name: pain_level
+    description: Self-reported pain severity (e.g. 1-10 scale or descriptive terms).
+  - name: onset_time
+    description: When the symptom or issue started.
+  - name: insurance_provider
+    description: The patient's insurance provider, if relevant to the request.
+
+appointment_types:
+  - name: emergency_visit
+    duration_minutes: 45
+    requires_onsite: true
+    triggers_when: CRITICAL or HIGH urgency pain/trauma requests.
+  - name: routine_cleaning
+    duration_minutes: 60
+    requires_onsite: true
+    triggers_when: Routine checkup or cleaning appointment requests.
+  - name: consultation
+    duration_minutes: 30
+    requires_onsite: true
+    triggers_when: New patient intake or procedure consultation requests.
+
+reply_tone: >
+  Warm and reassuring, avoid clinical jargon — many patients are anxious about dental visits.
+
+business_hours:
+  monday: {open: "08:00", close: "18:00"}
+  tuesday: {open: "08:00", close: "18:00"}
+  wednesday: {open: "08:00", close: "18:00"}
+  thursday: {open: "08:00", close: "18:00"}
+  friday: {open: "08:00", close: "18:00"}
+  saturday: {open: "09:00", close: "13:00"}
+  sunday: {open: null, close: null}
+
+timezone: "America/Chicago"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 10, resolution_hours: 2}
+  HIGH: {first_response_minutes: 30, resolution_hours: 24}
+  MEDIUM: {first_response_minutes: 120, resolution_hours: 48}
+  LOW: {first_response_minutes: 480, resolution_hours: 120}
+
+routing_table:
+  - {issue_type: pain_or_emergency, urgency: CRITICAL, assignee_role: on_call_dentist}
+  - {issue_type: pain_or_emergency, assignee_role: dental_hygienist_triage}
+  - {issue_type: appointment_request, assignee_role: front_desk_scheduler}
+  - {issue_type: insurance_question, assignee_role: billing_coordinator}
+  - {issue_type: reschedule_cancel, assignee_role: front_desk_scheduler}
+  - {issue_type: other, assignee_role: front_desk_scheduler}
+
+default_assignee_role: front_desk_scheduler
+
+
+======================================================================
+FILE: backend\app\verticals\packs\home_services.yaml
+======================================================================
+# Taskmaster vertical config pack — Home Services (plumbing, HVAC, electrical)
+key: home_services
+display_name: "Home Services (Plumbing, HVAC, Electrical)"
+business_description: >
+  Dispatch intake for a residential home services company covering plumbing, HVAC, and
+  electrical work.
+
+issue_types:
+  - name: plumbing
+    description: Leaks, clogs, water heater issues, pipe damage.
+    examples:
+      - "Water is pouring out from under the kitchen sink"
+      - "The upstairs toilet is completely clogged"
+  - name: hvac
+    description: Heating/cooling system failures, no heat, no AC, thermostat issues.
+    examples:
+      - "No heat and it's below freezing outside"
+      - "AC stopped working, it's hot but not dangerous"
+  - name: electrical
+    description: Power outages, wiring issues, breaker trips, outlet/fixture problems.
+    examples:
+      - "The whole house lost power"
+      - "An outlet is sparking"
+  - name: estimate_request
+    description: Requests for a quote on a new installation or larger project.
+    examples:
+      - "Want a quote for a new water heater"
+      - "Looking to get central air installed"
+  - name: other
+    description: General questions not covered by the categories above.
+    examples:
+      - "What are your service area zip codes?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: Active water leak, no heat in cold weather, no power, or an electrical hazard.
+    concrete_examples:
+      - "Water is pouring out from under the sink"
+      - "No heat and it's below freezing outside"
+      - "Whole house lost power"
+      - "An outlet is sparking"
+  - level: HIGH
+    definition: A major system is down but not actively causing damage or a hazard.
+    concrete_examples:
+      - "AC stopped working, it's hot but not dangerous"
+      - "One breaker keeps tripping"
+  - level: MEDIUM
+    definition: Inconvenient but functional.
+    concrete_examples:
+      - "Faucet drips slowly"
+      - "One room runs warmer than the rest of the house"
+  - level: LOW
+    definition: Routine maintenance or quote requests.
+    concrete_examples:
+      - "Want a quote for a new water heater"
+      - "Annual HVAC tune-up"
+
+required_entities:
+  - name: system_affected
+    description: Which fixture, unit, or circuit is affected.
+  - name: property_type
+    description: House, apartment, or commercial property.
+  - name: symptom_duration
+    description: How long the issue has been happening.
+
+appointment_types:
+  - name: emergency_dispatch
+    duration_minutes: 60
+    requires_onsite: true
+    triggers_when: CRITICAL urgency requests.
+  - name: standard_service_call
+    duration_minutes: 90
+    requires_onsite: true
+    triggers_when: HIGH or MEDIUM urgency repair requests.
+  - name: estimate_visit
+    duration_minutes: 45
+    requires_onsite: true
+    triggers_when: estimate_request issue type.
+
+reply_tone: >
+  Direct and reassuring — homeowners are often stressed about property damage, be clear
+  about what happens next and how fast help is coming.
+
+business_hours:
+  monday: {open: "07:00", close: "19:00"}
+  tuesday: {open: "07:00", close: "19:00"}
+  wednesday: {open: "07:00", close: "19:00"}
+  thursday: {open: "07:00", close: "19:00"}
+  friday: {open: "07:00", close: "19:00"}
+  saturday: {open: "08:00", close: "16:00"}
+  sunday: {open: null, close: null}
+
+timezone: "America/Denver"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 15, resolution_hours: 3}
+  HIGH: {first_response_minutes: 45, resolution_hours: 12}
+  MEDIUM: {first_response_minutes: 180, resolution_hours: 48}
+  LOW: {first_response_minutes: 720, resolution_hours: 168}
+
+routing_table:
+  - {issue_type: plumbing, urgency: CRITICAL, assignee_role: emergency_plumber}
+  - {issue_type: plumbing, assignee_role: plumber}
+  - {issue_type: hvac, urgency: CRITICAL, assignee_role: emergency_hvac_tech}
+  - {issue_type: hvac, assignee_role: hvac_tech}
+  - {issue_type: electrical, urgency: CRITICAL, assignee_role: emergency_electrician}
+  - {issue_type: electrical, assignee_role: electrician}
+  - {issue_type: estimate_request, assignee_role: sales_estimator}
+  - {issue_type: other, assignee_role: dispatcher}
+
+default_assignee_role: dispatcher
+
+
+======================================================================
+FILE: backend\app\verticals\packs\it_support.yaml
+======================================================================
+# Taskmaster vertical config pack — IT Support / MSP (flagship/demo vertical)
+key: it_support
+display_name: "IT Support & MSP"
+business_description: >
+  Managed IT support desk handling infrastructure, hardware, software, and security issues
+  for small-to-mid size business clients.
+
+issue_types:
+  - name: network
+    description: Connectivity, VPN, wifi, internet outages, DNS/routing issues.
+    examples:
+      - "Office wifi is down"
+      - "Can't connect to VPN from home"
+      - "Internet keeps dropping every few minutes"
+  - name: hardware
+    description: Physical device failures — printers, laptops, servers, peripherals.
+    examples:
+      - "Printer won't turn on"
+      - "Laptop screen is cracked"
+      - "Server fan is making a loud noise"
+  - name: software
+    description: Application errors, installs, licensing, and OS issues.
+    examples:
+      - "Excel crashes every time I open it"
+      - "Need Adobe license activated for a new hire"
+      - "Windows update is stuck at 40%"
+  - name: security
+    description: Suspected breaches, phishing, malware, account lockouts, access issues.
+    examples:
+      - "Got a phishing email asking for my password"
+      - "Locked out of the admin account"
+      - "Antivirus flagged a file and quarantined it"
+  - name: other
+    description: General IT questions or requests that don't fit the categories above.
+    examples:
+      - "Do we need to upgrade our Office license this year?"
+      - "Can you set up a laptop for a new employee starting Monday?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: Business-down. Multiple users or an entire site cannot work.
+    concrete_examples:
+      - "Entire office has no internet"
+      - "Main file server is offline"
+      - "Point-of-sale system is down during business hours"
+  - level: HIGH
+    definition: A single critical system or a VIP user is blocked with no workaround.
+    concrete_examples:
+      - "CEO's laptop won't boot before a client meeting"
+      - "Accounting software is down during month-end close"
+  - level: MEDIUM
+    definition: Impacts one person's productivity, but a workaround exists.
+    concrete_examples:
+      - "One user's email is slow to sync"
+      - "A single printer is offline but others are available"
+  - level: LOW
+    definition: Minor annoyance or a general question with no immediate impact.
+    concrete_examples:
+      - "Question about a software license renewal"
+      - "Request to add a bookmark to a shared browser profile"
+
+required_entities:
+  - name: device_type
+    description: The type of device or system affected (e.g. laptop, server, printer, router).
+  - name: affected_user_count
+    description: How many people are impacted — one person, a department, or the whole site.
+  - name: error_message
+    description: Any exact error text, code, or message the customer saw, if mentioned.
+
+appointment_types:
+  - name: remote_session
+    duration_minutes: 30
+    requires_onsite: false
+    triggers_when: Issue can likely be resolved via screen share or remote access.
+  - name: onsite_visit
+    duration_minutes: 90
+    requires_onsite: true
+    triggers_when: Hardware replacement, network wiring, or physical access is required.
+
+reply_tone: >
+  Technical but plain-English — explain what's being done without jargon, stay calm and
+  competent even when the customer is frustrated.
+
+business_hours:
+  monday: {open: "09:00", close: "17:00"}
+  tuesday: {open: "09:00", close: "17:00"}
+  wednesday: {open: "09:00", close: "17:00"}
+  thursday: {open: "09:00", close: "17:00"}
+  friday: {open: "09:00", close: "17:00"}
+  saturday: {open: null, close: null}
+  sunday: {open: null, close: null}
+
+timezone: "America/New_York"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 15, resolution_hours: 4}
+  HIGH: {first_response_minutes: 60, resolution_hours: 8}
+  MEDIUM: {first_response_minutes: 240, resolution_hours: 24}
+  LOW: {first_response_minutes: 480, resolution_hours: 72}
+
+routing_table:
+  - {issue_type: network, urgency: CRITICAL, assignee_role: senior_network_engineer}
+  - {issue_type: network, assignee_role: network_technician}
+  - {issue_type: hardware, assignee_role: field_technician}
+  - {issue_type: software, assignee_role: helpdesk_technician}
+  - {issue_type: security, urgency: CRITICAL, assignee_role: security_lead}
+  - {issue_type: security, assignee_role: helpdesk_technician}
+  - {issue_type: other, assignee_role: helpdesk_technician}
+
+default_assignee_role: helpdesk_technician
+
+
+======================================================================
+FILE: backend\app\verticals\packs\property_management.yaml
+======================================================================
+# Taskmaster vertical config pack — Property Management
+key: property_management
+display_name: "Property Management"
+business_description: >
+  Tenant-facing intake for a residential property management company covering maintenance
+  requests, lease questions, and complaints.
+
+issue_types:
+  - name: maintenance_request
+    description: Repairs needed in a unit or common area (appliances, plumbing, general upkeep).
+    examples:
+      - "Refrigerator stopped working"
+      - "Dishwasher doesn't drain fully"
+  - name: lease_question
+    description: Questions about lease terms, renewals, move-in/move-out, or rent.
+    examples:
+      - "When does my lease renew?"
+      - "How do I give notice that I'm moving out?"
+  - name: complaint
+    description: Noise complaints, neighbor disputes, or dissatisfaction with property conditions.
+    examples:
+      - "My upstairs neighbor is extremely loud every night"
+      - "The hallway hasn't been cleaned in weeks"
+  - name: amenity_access
+    description: Issues with keys, fobs, gate codes, or shared amenities (gym, pool, parking).
+    examples:
+      - "My key fob stopped working"
+      - "Can I get an extra parking pass?"
+  - name: other
+    description: General questions not covered by the categories above.
+    examples:
+      - "What's the office's holiday schedule?"
+
+urgency_rules:
+  - level: CRITICAL
+    definition: >
+      No heat/AC in extreme weather, no water, a gas smell, or a safety hazard such as a
+      broken lock or exposed wiring.
+    concrete_examples:
+      - "I smell gas in my kitchen"
+      - "Front door lock is broken and won't lock"
+      - "No water in the whole unit"
+  - level: HIGH
+    definition: A major appliance or system is broken with real daily impact.
+    concrete_examples:
+      - "Refrigerator stopped working"
+      - "Toilet is completely clogged and unusable"
+  - level: MEDIUM
+    definition: Inconvenient but livable.
+    concrete_examples:
+      - "Dishwasher doesn't drain fully"
+      - "Squeaky door hinge"
+  - level: LOW
+    definition: Non-urgent questions or minor requests.
+    concrete_examples:
+      - "When does my lease renew?"
+      - "Can I get an extra parking pass?"
+
+required_entities:
+  - name: unit_number
+    description: The tenant's unit or apartment number.
+  - name: issue_location
+    description: Where the issue is located (e.g. kitchen, bathroom, common area).
+  - name: access_permission
+    description: Whether management has permission to enter the unit if the tenant is away.
+
+appointment_types:
+  - name: emergency_repair
+    duration_minutes: 60
+    requires_onsite: true
+    triggers_when: CRITICAL urgency maintenance requests.
+  - name: scheduled_maintenance
+    duration_minutes: 90
+    requires_onsite: true
+    triggers_when: HIGH or MEDIUM urgency maintenance requests.
+  - name: office_consultation
+    duration_minutes: 30
+    requires_onsite: false
+    triggers_when: Lease questions or complaints that need a discussion, not a repair.
+
+reply_tone: >
+  Professional and empathetic — acknowledge frustration about living conditions while being
+  clear about next steps and timelines.
+
+business_hours:
+  monday: {open: "09:00", close: "17:00"}
+  tuesday: {open: "09:00", close: "17:00"}
+  wednesday: {open: "09:00", close: "17:00"}
+  thursday: {open: "09:00", close: "17:00"}
+  friday: {open: "09:00", close: "17:00"}
+  saturday: {open: null, close: null}
+  sunday: {open: null, close: null}
+
+timezone: "America/Los_Angeles"
+
+sla_by_priority:
+  CRITICAL: {first_response_minutes: 20, resolution_hours: 6}
+  HIGH: {first_response_minutes: 60, resolution_hours: 24}
+  MEDIUM: {first_response_minutes: 240, resolution_hours: 72}
+  LOW: {first_response_minutes: 480, resolution_hours: 120}
+
+routing_table:
+  - {issue_type: maintenance_request, urgency: CRITICAL, assignee_role: emergency_maintenance_tech}
+  - {issue_type: maintenance_request, assignee_role: maintenance_tech}
+  - {issue_type: lease_question, assignee_role: leasing_agent}
+  - {issue_type: complaint, assignee_role: property_manager}
+  - {issue_type: amenity_access, assignee_role: office_staff}
+  - {issue_type: other, assignee_role: office_staff}
+
+default_assignee_role: office_staff
+
+
+======================================================================
+FILE: backend\tests\test_agent.py
+======================================================================
+
+
+======================================================================
+FILE: backend\tests\test_models.py
+======================================================================
+"""Round-trip and invalid-payload tests for the app.models contract."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from pydantic import ValidationError
+
+from app.models import (
+    Appointment,
+    AppointmentStatus,
+    Channel,
+    Classification,
+    NormalizedMessage,
+    PipelineState,
+    ReplyDraft,
+    Sender,
+    Sentiment,
+    StageTiming,
+    Ticket,
+    TicketStatus,
+    TimeSlot,
+    Urgency,
+)
+
+
+# --- sample builders -------------------------------------------------------
+
+
+def sample_message() -> NormalizedMessage:
+    return NormalizedMessage(
+        intake_id="intake-1",
+        vertical="it_support",
+        channel=Channel.EMAIL,
+        sender=Sender(name="Jane Doe", email="jane@example.com"),
+        subject="My printer is broken",
+        body_text="The printer on the 3rd floor won't turn on.",
+    )
+
+
+def sample_classification() -> Classification:
+    return Classification(
+        issue_type="hardware_failure",
+        urgency=Urgency.HIGH,
+        summary="Printer on 3rd floor is unresponsive.",
+        extracted_details={"device": "printer", "floor": 3},
+        missing_info=["asset_tag"],
+        sentiment=Sentiment.ANNOYED,
+        frustration_score=0.4,
+        business_impact="Team cannot print client documents.",
+        confidence=0.87,
+        reasoning="Message clearly describes a non-functioning hardware device.",
+    )
+
+
+def sample_ticket() -> Ticket:
+    return Ticket(
+        ticket_number="TCK-0001",
+        intake_id="intake-1",
+        vertical="it_support",
+        customer=Sender(name="Jane Doe", email="jane@example.com"),
+        issue_type="hardware_failure",
+        priority=Urgency.HIGH,
+        status=TicketStatus.NEW,
+        title="Printer unresponsive on 3rd floor",
+        description="The printer on the 3rd floor won't turn on.",
+        extracted_details={"device": "printer", "floor": 3},
+        missing_info=["asset_tag"],
+        sentiment=Sentiment.ANNOYED,
+        confidence=0.87,
+    )
+
+
+def sample_reply() -> ReplyDraft:
+    return ReplyDraft(
+        subject="Re: My printer is broken",
+        body="Thanks for reaching out - we've logged ticket TCK-0001 and will follow up shortly.",
+        tone="empathetic",
+        language="en",
+        questions_asked=["What is the printer's asset tag?"],
+    )
+
+
+def sample_appointment() -> Appointment:
+    start = datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc)
+    end = start + timedelta(hours=1)
+    return Appointment(
+        appointment_id="appt-1",
+        ticket_number="TCK-0001",
+        appointment_type="on_site_repair",
+        assignee="tech-42",
+        proposed_slots=[TimeSlot(start=start, end=end)],
+        status=AppointmentStatus.PROPOSED,
+    )
+
+
+def sample_pipeline_state() -> PipelineState:
+    return PipelineState(
+        message=sample_message(),
+        classification=sample_classification(),
+        ticket=sample_ticket(),
+        reply=sample_reply(),
+        appointment=sample_appointment(),
+        stage_timings=[
+            StageTiming(stage="intake_agent", elapsed_ms=120.5, correlation_id="intake-1")
+        ],
+    )
+
+
+# --- round-trip tests --------------------------------------------------------
+
+
+def test_normalized_message_round_trip():
+    original = sample_message()
+    restored = NormalizedMessage.model_validate_json(original.model_dump_json())
+    assert restored == original
+
+
+def test_classification_round_trip():
+    original = sample_classification()
+    restored = Classification.model_validate_json(original.model_dump_json())
+    assert restored == original
+
+
+def test_ticket_round_trip():
+    original = sample_ticket()
+    restored = Ticket.model_validate_json(original.model_dump_json())
+    assert restored == original
+
+
+def test_reply_draft_round_trip():
+    original = sample_reply()
+    restored = ReplyDraft.model_validate_json(original.model_dump_json())
+    assert restored == original
+
+
+def test_appointment_round_trip():
+    original = sample_appointment()
+    restored = Appointment.model_validate_json(original.model_dump_json())
+    assert restored == original
+
+
+def test_pipeline_state_round_trip():
+    original = sample_pipeline_state()
+    restored = PipelineState.model_validate_json(original.model_dump_json())
+    assert restored == original
+
+
+# --- invalid payload tests ----------------------------------------------------
+
+
+def test_normalized_message_missing_body_text_is_invalid():
+    payload = sample_message().model_dump(mode="json")
+    del payload["body_text"]
+    with pytest.raises(ValidationError):
+        NormalizedMessage.model_validate(payload)
+
+
+def test_classification_confidence_out_of_range_is_invalid():
+    payload = sample_classification().model_dump(mode="json")
+    payload["confidence"] = 1.5
+    with pytest.raises(ValidationError):
+        Classification.model_validate(payload)
+
+
+def test_ticket_invalid_status_is_invalid():
+    payload = sample_ticket().model_dump(mode="json")
+    payload["status"] = "not_a_status"
+    with pytest.raises(ValidationError):
+        Ticket.model_validate(payload)
+
+
+def test_reply_draft_missing_body_is_invalid():
+    payload = sample_reply().model_dump(mode="json")
+    del payload["body"]
+    with pytest.raises(ValidationError):
+        ReplyDraft.model_validate(payload)
+
+
+def test_appointment_slot_end_before_start_is_invalid():
+    start = datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValidationError):
+        TimeSlot(start=start, end=start - timedelta(minutes=30))
+
+
+def test_pipeline_state_negative_elapsed_ms_is_invalid():
+    payload = sample_pipeline_state().model_dump(mode="json")
+    payload["stage_timings"][0]["elapsed_ms"] = -5
+    with pytest.raises(ValidationError):
+        PipelineState.model_validate(payload)
+
+
+# --- vertical taxonomy context validation -------------------------------------
+
+
+def test_issue_type_passes_when_in_context_taxonomy():
+    payload = sample_classification().model_dump(mode="json")
+    result = Classification.model_validate(
+        payload, context={"valid_issue_types": {"hardware_failure", "network_outage"}}
+    )
+    assert result.issue_type == "hardware_failure"
+
+
+def test_issue_type_rejected_when_not_in_context_taxonomy():
+    payload = sample_classification().model_dump(mode="json")
+    with pytest.raises(ValidationError):
+        Classification.model_validate(
+            payload, context={"valid_issue_types": {"network_outage", "account_access"}}
+        )
+
+
+======================================================================
+FILE: backend\tests\test_repository.py
+======================================================================
+"""Repository tests, run entirely against InMemoryRepo (no GCP credentials needed)."""
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from app.models import Sender, Sentiment, TicketDraft, TicketHistoryEntry, TicketStatus, Urgency
+from app.services.in_memory_repo import InMemoryRepo
+from app.services.repository import TicketNotFoundError
+
+
+def make_draft(
+    *,
+    vertical: str = "it_support",
+    email: str | None = "jane@example.com",
+    phone: str | None = None,
+    title: str = "Printer unresponsive on 3rd floor",
+    description: str = "The printer on the 3rd floor won't turn on.",
+) -> TicketDraft:
+    return TicketDraft(
+        intake_id="intake-1",
+        vertical=vertical,
+        customer=Sender(name="Jane Doe", email=email, phone=phone),
+        issue_type="hardware",
+        priority=Urgency.HIGH,
+        title=title,
+        description=description,
+        sentiment=Sentiment.ANNOYED,
+        confidence=0.87,
+    )
+
+
+@pytest.fixture
+def repo() -> InMemoryRepo:
+    return InMemoryRepo()
+
+
+# --- ticket numbering ---------------------------------------------------------
+
+
+async def test_create_ticket_assigns_sequential_numbers_per_vertical(repo: InMemoryRepo):
+    t1 = await repo.create_ticket(make_draft(vertical="it_support"))
+    t2 = await repo.create_ticket(make_draft(vertical="it_support"))
+    t3 = await repo.create_ticket(make_draft(vertical="dental_clinic"))
+
+    assert t1.ticket_number == "TK-0001"
+    assert t2.ticket_number == "TK-0002"
+    assert t3.ticket_number == "TK-0001"  # independent sequence for a different vertical
+
+
+async def test_concurrent_create_ticket_no_duplicate_numbers(repo: InMemoryRepo):
+    results = await asyncio.gather(*[repo.create_ticket(make_draft()) for _ in range(10)])
+    numbers = [t.ticket_number for t in results]
+    assert len(set(numbers)) == 10
+
+
+# --- get / mutate --------------------------------------------------------------
+
+
+async def test_get_ticket_roundtrip(repo: InMemoryRepo):
+    created = await repo.create_ticket(make_draft())
+    fetched = await repo.get_ticket(created.ticket_number, vertical="it_support")
+    assert fetched == created
+
+
+async def test_get_ticket_missing_returns_none(repo: InMemoryRepo):
+    assert await repo.get_ticket("TK-9999", vertical="it_support") is None
+
+
+async def test_update_ticket_status_appends_history_and_updates_status(repo: InMemoryRepo):
+    created = await repo.create_ticket(make_draft())
+    updated = await repo.update_ticket_status(
+        created.ticket_number, vertical="it_support", status=TicketStatus.IN_PROGRESS, actor="tech-1"
+    )
+    assert updated.status == TicketStatus.IN_PROGRESS
+    assert len(updated.history) == len(created.history) + 1
+    assert updated.history[-1].actor == "tech-1"
+    assert updated.updated_at >= created.updated_at
+
+
+async def test_update_ticket_status_missing_ticket_raises_not_found(repo: InMemoryRepo):
+    with pytest.raises(TicketNotFoundError):
+        await repo.update_ticket_status(
+            "TK-9999", vertical="it_support", status=TicketStatus.RESOLVED, actor="tech-1"
+        )
+
+
+async def test_append_ticket_event(repo: InMemoryRepo):
+    created = await repo.create_ticket(make_draft())
+    entry = TicketHistoryEntry(actor="tech-1", action="called_customer", notes="left voicemail")
+    updated = await repo.append_ticket_event(created.ticket_number, vertical="it_support", entry=entry)
+    assert updated.history[-1] == entry
+    assert updated.status == created.status  # unaffected
+
+
+# --- list_tickets ---------------------------------------------------------------
+
+
+async def test_list_tickets_filters_by_status_priority_category(repo: InMemoryRepo):
+    t1 = await repo.create_ticket(make_draft(title="Network down"))
+    await repo.update_ticket_status(t1.ticket_number, vertical="it_support", status=TicketStatus.RESOLVED, actor="x")
+    await repo.create_ticket(make_draft(title="Laptop broken"))
+
+    page = await repo.list_tickets(vertical="it_support", status=TicketStatus.RESOLVED)
+    assert [t.ticket_number for t in page.items] == [t1.ticket_number]
+
+    page = await repo.list_tickets(vertical="it_support", priority=Urgency.HIGH)
+    assert len(page.items) == 2
+
+    page = await repo.list_tickets(vertical="it_support", category="hardware")
+    assert len(page.items) == 2
+
+    page = await repo.list_tickets(vertical="it_support", category="software")
+    assert page.items == []
+
+
+async def test_list_tickets_pagination_cursor_no_overlap_or_skip(repo: InMemoryRepo):
+    created = [await repo.create_ticket(make_draft(title=f"issue {i}")) for i in range(5)]
+    expected_order = sorted((t.ticket_number for t in created), reverse=True)
+
+    page1 = await repo.list_tickets(vertical="it_support", limit=2)
+    assert [t.ticket_number for t in page1.items] == expected_order[:2]
+    assert page1.next_cursor is not None
+
+    page2 = await repo.list_tickets(vertical="it_support", limit=2, cursor=page1.next_cursor)
+    assert [t.ticket_number for t in page2.items] == expected_order[2:4]
+    assert page2.next_cursor is not None
+
+    page3 = await repo.list_tickets(vertical="it_support", limit=2, cursor=page2.next_cursor)
+    assert [t.ticket_number for t in page3.items] == expected_order[4:5]
+    assert page3.next_cursor is None
+
+
+async def test_list_tickets_search_matches_title_or_description(repo: InMemoryRepo):
+    await repo.create_ticket(make_draft(title="VPN is down", description="cannot connect from home"))
+    await repo.create_ticket(make_draft(title="Laptop broken", description="screen is cracked"))
+
+    page = await repo.list_tickets(vertical="it_support", search="vpn")
+    assert len(page.items) == 1
+    assert "VPN" in page.items[0].title
+
+    page = await repo.list_tickets(vertical="it_support", search="cracked")
+    assert len(page.items) == 1
+    assert "Laptop" in page.items[0].title
+
+
+# --- customers -------------------------------------------------------------------
+
+
+async def test_create_ticket_upserts_customer_and_increments_ticket_count(repo: InMemoryRepo):
+    await repo.create_ticket(make_draft(email="jane@example.com"))
+    await repo.create_ticket(make_draft(email="jane@example.com"))
+
+    customer = await repo.find_customer_by_email_or_phone(vertical="it_support", email="jane@example.com")
+    assert customer is not None
+    assert customer.ticket_count == 2
+
+
+async def test_find_customer_requires_email_or_phone(repo: InMemoryRepo):
+    with pytest.raises(ValueError):
+        await repo.find_customer_by_email_or_phone(vertical="it_support")
+
+
+async def test_get_customer_history_returns_tickets_for_that_customer(repo: InMemoryRepo):
+    mine = await repo.create_ticket(make_draft(email="jane@example.com", title="ticket A"))
+    await repo.create_ticket(make_draft(email="someone.else@example.com", title="ticket B"))
+    mine2 = await repo.create_ticket(make_draft(email="jane@example.com", title="ticket C"))
+
+    history = await repo.get_customer_history(vertical="it_support", email="jane@example.com")
+    assert {t.ticket_number for t in history} == {mine.ticket_number, mine2.ticket_number}
+
+
+# --- pipeline state ---------------------------------------------------------------
+
+
+async def test_save_pipeline_state_does_not_raise_and_returns_intake_id(repo: InMemoryRepo):
+    from app.models import Channel, NormalizedMessage, PipelineState
+
+    state = PipelineState(
+        message=NormalizedMessage(
+            intake_id="intake-42",
+            vertical="it_support",
+            channel=Channel.EMAIL,
+            sender=Sender(email="jane@example.com"),
+            body_text="hello",
+        )
+    )
+    doc_id = await repo.save_pipeline_state(state)
+    assert doc_id == "intake-42"
+
+
+======================================================================
+FILE: backend\tests\test_verticals.py
+======================================================================
+"""Tests for the vertical config system: packs validate, loader rejects bad packs, and swapping
+ACTIVE_VERTICAL changes the taxonomy returned with zero code changes.
+"""
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from app.config import settings
+from app.models import Classification, Sentiment, Urgency
+from app.verticals import VerticalConfig, VerticalConfigError, get_active_vertical, get_vertical
+from app.verticals.loader import load_vertical_pack
+
+ALL_PACK_KEYS = ["it_support", "dental_clinic", "home_services", "property_management"]
+
+
+# --- every pack validates ---------------------------------------------------
+
+
+@pytest.mark.parametrize("key", ALL_PACK_KEYS)
+def test_all_packs_validate(key: str):
+    config = get_vertical(key)
+    assert isinstance(config, VerticalConfig)
+    assert config.key == key
+    assert config.issue_type_names  # non-empty
+
+
+# --- loader rejects malformed packs -----------------------------------------
+
+
+def test_loader_rejects_pack_missing_required_field(tmp_path):
+    (tmp_path / "broken.yaml").write_text(
+        """
+key: broken
+display_name: "Broken Pack"
+business_description: "Missing issue_types entirely."
+urgency_rules:
+  - {level: LOW, definition: "low", concrete_examples: []}
+  - {level: MEDIUM, definition: "medium", concrete_examples: []}
+  - {level: HIGH, definition: "high", concrete_examples: []}
+  - {level: CRITICAL, definition: "critical", concrete_examples: []}
+reply_tone: "neutral"
+business_hours:
+  monday: {open: null, close: null}
+  tuesday: {open: null, close: null}
+  wednesday: {open: null, close: null}
+  thursday: {open: null, close: null}
+  friday: {open: null, close: null}
+  saturday: {open: null, close: null}
+  sunday: {open: null, close: null}
+timezone: "UTC"
+sla_by_priority:
+  LOW: {first_response_minutes: 1}
+  MEDIUM: {first_response_minutes: 1}
+  HIGH: {first_response_minutes: 1}
+  CRITICAL: {first_response_minutes: 1}
+default_assignee_role: nobody
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VerticalConfigError, match="failed validation"):
+        load_vertical_pack("broken", packs_dir=tmp_path)
+
+
+def test_loader_rejects_key_filename_mismatch(tmp_path):
+    (tmp_path / "mismatch.yaml").write_text(
+        """
+key: not_mismatch
+display_name: "Mismatch Pack"
+business_description: "key field does not match filename"
+issue_types:
+  - {name: general, description: "general issues", examples: []}
+urgency_rules:
+  - {level: LOW, definition: "low", concrete_examples: []}
+  - {level: MEDIUM, definition: "medium", concrete_examples: []}
+  - {level: HIGH, definition: "high", concrete_examples: []}
+  - {level: CRITICAL, definition: "critical", concrete_examples: []}
+reply_tone: "neutral"
+business_hours:
+  monday: {open: null, close: null}
+  tuesday: {open: null, close: null}
+  wednesday: {open: null, close: null}
+  thursday: {open: null, close: null}
+  friday: {open: null, close: null}
+  saturday: {open: null, close: null}
+  sunday: {open: null, close: null}
+timezone: "UTC"
+sla_by_priority:
+  LOW: {first_response_minutes: 1}
+  MEDIUM: {first_response_minutes: 1}
+  HIGH: {first_response_minutes: 1}
+  CRITICAL: {first_response_minutes: 1}
+default_assignee_role: nobody
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VerticalConfigError, match="must match"):
+        load_vertical_pack("mismatch", packs_dir=tmp_path)
+
+
+def test_loader_rejects_missing_pack(tmp_path):
+    with pytest.raises(VerticalConfigError, match="No vertical config pack found"):
+        load_vertical_pack("does_not_exist", packs_dir=tmp_path)
+
+
+# --- caching -----------------------------------------------------------------
+
+
+def test_get_vertical_caches():
+    assert get_vertical("it_support") is get_vertical("it_support")
+
+
+# --- swapping ACTIVE_VERTICAL changes the taxonomy, zero code changes --------
+
+
+def test_active_vertical_swaps_with_zero_code_changes(monkeypatch):
+    monkeypatch.setattr(settings, "ACTIVE_VERTICAL", "it_support")
+    it_support = get_active_vertical()
+    assert it_support.key == "it_support"
+
+    monkeypatch.setattr(settings, "ACTIVE_VERTICAL", "dental_clinic")
+    dental = get_active_vertical()
+    assert dental.key == "dental_clinic"
+
+    assert it_support.issue_type_names != dental.issue_type_names
+    assert "network" in it_support.issue_type_names
+    assert "pain_or_emergency" in dental.issue_type_names
+
+
+# --- routing -------------------------------------------------------------------
+
+
+def test_resolve_assignee_prefers_specific_over_wildcard():
+    config = get_vertical("it_support")
+    assert config.resolve_assignee("network", Urgency.CRITICAL) == "senior_network_engineer"
+    assert config.resolve_assignee("network", Urgency.LOW) == "network_technician"
+    assert config.resolve_assignee("totally_unknown_type", Urgency.LOW) == config.default_assignee_role
+
+
+# --- wired into app.models.Classification via validation context -------------
+
+
+def _classification_payload(issue_type: str) -> dict:
+    return {
+        "issue_type": issue_type,
+        "urgency": Urgency.HIGH,
+        "summary": "test",
+        "sentiment": Sentiment.ANNOYED,
+        "frustration_score": 0.3,
+        "business_impact": "test",
+        "confidence": 0.9,
+        "reasoning": "test",
+    }
+
+
+def test_classification_validates_against_real_vertical_taxonomy():
+    config = get_vertical("it_support")
+
+    valid = Classification.model_validate(
+        _classification_payload("network"), context={"valid_issue_types": config.issue_type_names}
+    )
+    assert valid.issue_type == "network"
+
+    with pytest.raises(ValidationError):
+        Classification.model_validate(
+            _classification_payload("not_a_real_issue_type"),
+            context={"valid_issue_types": config.issue_type_names},
+        )
+
+
+======================================================================
+FILE: docs\architecture_notes.md
+======================================================================
+# Taskmaster Architecture & Infrastructure Blueprint
+
+Taskmaster is an autonomous, event-driven IT support triage and dispatch coordinator. It ingests inbound client communications (SMS, email, web forms), processes unstructured text with Gemini 3.5 Flash via the Google GenAI SDK and Google ADK (Agent Development Kit), and executes autonomous sub-task operations (ticketing, calendar scheduling, and draft replies).
+
+---
+
+## 1. System Architecture Flow
+
+```
+
+[ Inbound Client Request ] (Google Voice SMS / Gmail / Webhook)
+│
+▼
+[ Cloud Pub/Sub Topic ] (gvoice-incoming-topic)
+│
+│ (Push Subscription)
+▼
+[ Cloud Run Webhook Engine ] (FastAPI Backend)
+│
+▼
+[ Google ADK Router Agent ] (Gemini 3.5 Flash)
+        │
+┌───────┴────────────────────────┬────────────────────────┐
+▼                                ▼                        ▼
+[ Tool: create_support_ticket ] [ Tool: check_schedule ] [ Tool: stage_sms_reply ]
+│                                   │                       │
+▼                                   ▼                       ▼
+(Firestore / CRM Record) (Google Calendar Slot) (Draft Dispatch Queue)
+
+```
+
+---
+
+## 2. Technology Stack
+
+- **AI & Orchestration:** Google GenAI SDK (`google-genai`), Google ADK (`google-adk`), `gemini-3.5-flash`
+- **Backend Runtime:** Python 3.11, FastAPI, Uvicorn, Pydantic v2
+- **Cloud Infrastructure:** Google Cloud Run (containerized serverless backend), Cloud Pub/Sub (asynchronous event ingestion)
+- **Frontend Dashboard:** React 18, Vite, Tailwind CSS, Lucide Icons
+
+---
+
+## 3. Google Cloud Setup & Configuration
+
+Run these commands using the Google Cloud CLI (`gcloud`) to configure project resources:
+
+### Step A: Enable Required Services
+
+```bash
+gcloud services enable \
+    pubsub.googleapis.com \
+    run.googleapis.com \
+    aiplatform.googleapis.com \
+    generativelanguage.googleapis.com
+
+```
+
+### Step B: Create Pub/Sub Topic and IAM Bindings
+
+```bash
+# 1. Create the ingestion topic
+gcloud pubsub topics create gvoice-incoming-topic
+
+# 2. Allow Gmail Push Notifications to publish events
+gcloud pubsub topics add-iam-policy-binding gvoice-incoming-topic \
+    --member="serviceAccount:gmail-api-push@system.gserviceaccount.com" \
+    --role="roles/pubsub.publisher"
+
+```
+
+### Step C: Deploy Backend to Cloud Run
+
+```bash
+# Deploy container from backend directory
+gcloud run deploy taskmaster-backend \
+    --source ./backend \
+    --region us-east1 \
+    --allow-unauthenticated \
+    --set-env-vars GEMINI_API_KEY="your_api_key_here"
+
+```
+
+### Step D: Create Push Subscription to Cloud Run
+
+```bash
+gcloud pubsub subscriptions create gvoice-push-sub \
+    --topic gvoice-incoming-topic \
+    --push-endpoint https://<YOUR-CLOUD-RUN-URL>/webhook/pubsub
+
+```
+
+---
+
+## 4. Agent Tool Definitions
+
+The ADK triage agent (`backend/src/services/ai/tools.py`) dynamically triggers three autonomous tools based on user intent:
+
+| Tool                            | Purpose                                                                             | Trigger Condition                                                    |
+| ------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `create_support_ticket`         | Generates a structured CRM support ticket with urgency rating and category.         | Urgent outage, hardware failure, network issue.                      |
+| `check_schedule_and_draft_slot` | Evaluates technician calendar availability and reserves a tentative support window. | Inquiries requesting appointments, consultations, or on-site visits. |
+| `stage_sms_reply`               | Stages a contextual, professional acknowledgment response for client dispatch.      | All inbound requests requiring prompt client updates.                |
+
+---
+
+## 5. Environment Variables (`.env`)
+
+```bash
+# Google Cloud & AI Credentials
+GEMINI_API_KEY="your_gemini_api_key"
+GCP_PROJECT_ID="hackathon8-20"
+GCP_REGION="us-east1"
+
+# Pub/Sub Configuration
+PUBSUB_TOPIC_NAME="gvoice-incoming-topic"
+PUBSUB_SUBSCRIPTION_NAME="gvoice-push-sub"
+
+# App Settings
+PORT=8080
+ENVIRONMENT="production"
+
+```
+
+
+======================================================================
+FILE: docs\demo_flow.md
+======================================================================
+# Taskmaster: Demo Flow & Presentation Script
+
+This document outlines the step-by-step walkthrough and video presentation script for demonstrating Taskmaster's autonomous triage and dispatch capabilities.
+
+---
+
+## 1. Quick Video Script (3-Minute Hackathon Demo)
+
+| Timestamp       | Video Screen                               | Narration Script                                                                                                                                                                                                                                                                                                                                                      |
+| :-------------- | :----------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0:00 – 0:30** | Split-screen UI                            | _"Small IT providers face constant context switching: urgent text messages, panic emails, and calendar scheduling requests arriving simultaneously. Taskmaster is an autonomous event coordinator powered by Gemini 3.5 Flash and Google ADK that ingests messy communications and takes immediate operational action."_                                              |
+| **0:30 – 1:15** | Client Simulator (Left Panel)              | _"Let's simulate an inbound emergency from a client: 'Our main switch is down and the office network is completely dead! Clients arrive in 20 minutes!' As we trigger this inbound payload, the backend receives the event via Cloud Pub/Sub and passes it to our ADK Router Agent."_                                                                                 |
+| **1:15 – 2:00** | Extraction & Execution Trace (Right Panel) | _"Notice what happens instantly on the right: Gemini extracts structured metadata—marking Urgency as Critical and Categorizing it under Network Infrastructure. Simultaneously, the Agent triggers two autonomous tools: `create_support_ticket` to generate Ticket #1042 in our CRM, and `stage_sms_reply` with an immediate power-cycle checklist for the client."_ |
+| **2:00 – 2:30** | Second Scenario (Consultation Request)     | _"Now let's test a non-urgent scenario: 'Looking to get a quote on setting up a new mesh Wi-Fi network.' The agent detects a low-urgency sales request, avoids emergency alerts, and automatically invokes `check_schedule_and_draft_slot` to propose calendar windows."_                                                                                             |
+| **2:30 – 3:00** | Architecture / Cloud Run Overview          | _"Taskmaster runs containerized on Google Cloud Run, scaling to zero when idle, using the Google GenAI SDK for low-latency JSON schema enforcement. Thank you!"_                                                                                                                                                                                                      |
+
+---
+
+## 2. Test Scenarios for Reproducible Evaluation
+
+### Scenario A: Critical Network Outage
+
+- **Inbound Message:** `"Our main switch is down and the office network is completely dead! We have clients arriving in 20 minutes!"`
+- **Expected Agent Output:**
+  - **Category:** `Network / Infrastructure`
+  - **Urgency:** `Critical / High`
+  - **Triggered Tools:** `create_support_ticket(priority='High')`, `stage_sms_reply(...)`
+
+### Scenario B: Routine Scheduling & Consultation
+
+- **Inbound Message:** `"Hi Morgan, we are expanding our office next month and want to discuss setting up 10 new workstations. Can we meet Tuesday afternoon?"`
+- **Expected Agent Output:**
+  - **Category:** `Consultation / Deployment`
+  - **Urgency:** `Standard Priority`
+  - **Triggered Tools:** `check_schedule_and_draft_slot(preferred_time='Tuesday afternoon')`, `stage_sms_reply(...)`
+
+### Scenario C: General Inquiry / Peripheral Support
+
+- **Inbound Message:** `"My monitor is flickering intermittently after the Windows update. Any quick fix?"`
+- **Expected Agent Output:**
+  - **Category:** `Workstation / OS Support`
+  - **Urgency:** `Low / Standard`
+  - **Triggered Tools:** `stage_sms_reply(reply_body='Driver update & cable reseat checklist...')`
+
+---
+
+## 3. Local Live Demo Instructions
+
+1. **Start Backend:**
+
+   ```bash
+   cd backend
+   uvicorn src.main:app --reload --port 8000
+   ```
+
+2. **Start Frontend:**
+
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+3. Open `http://localhost:5173`, select any preset scenario on the left panel, and click **Simulate Incoming Request** to view real-time triage extraction and agent tool traces.
+
+
+======================================================================
+FILE: docs\prd.md
+======================================================================
+# Product Requirements Document (PRD): Taskmaster
+
+## 1. Product Overview
+
+**Product Name:** Taskmaster  
+**Category:** Taskmaster / Autonomous Operations Agent  
+**Core Purpose:** An autonomous, event-driven IT support dispatcher and workflow coordinator built for small MSPs and independent tech support providers. Taskmaster transforms unstructured inbound communications (SMS, emails, webhooks) into structured CRM tickets, automated calendar bookings, and contextual client draft replies using Gemini 3.5 Flash and Google ADK.
+
+---
+
+## 2. Problem Statement
+
+Solo IT technicians and small managed service providers face severe context-switching fatigue:
+
+- Critical network outages arrive as chaotic, unstructured text messages.
+- Non-urgent sales inquiries and scheduling requests interrupt high-focus diagnostic work.
+- Manual ticket logging, calendar slot checks, and client updates create a 15–30 minute operational lag per incident.
+
+Taskmaster solves this by running an autonomous, background triage agent loop that intercepts events in real time, classifies priority, and executes required tool operations before the technician even opens their laptop.
+
+---
+
+## 3. User Personas
+
+| Persona                                 | Role              | Key Needs                                                                                                   |
+| :-------------------------------------- | :---------------- | :---------------------------------------------------------------------------------------------------------- |
+| **Lead Field Technician / MSP Founder** | Primary Operator  | Instant incident categorization, zero manual ticket entry, automatic calendar protection during field work. |
+| **End Client / Customer**               | Inbound Requester | Immediate acknowledgment, step-by-step triage checklist during panic situations, transparent communication. |
+
+---
+
+## 4. Key Functional Requirements
+
+### 4.1 Ingestion & Normalization
+
+- Accept real-time push payloads via Google Cloud Pub/Sub from connected communication channels (e.g., forwarded Google Voice SMS, Gmail API webhooks).
+- Provide a direct `/api/simulate` endpoint for local UI testing and presentation demos.
+
+### 4.2 Autonomous AI Triage (Gemini 3.5 Flash & ADK)
+
+- **Structured Extraction:** Extract structured JSON schema metadata:
+  - `client_name`: Client or organization identity.
+  - `category`: `Network / Infrastructure`, `Workstation / OS Support`, `Consultation / Deployment`, or `General Inquiry`.
+  - `urgency`: `Critical / High`, `Medium`, or `Low / Standard`.
+  - `summary`: Clean, 1–2 sentence technical synopsis.
+- **Autonomous Tool Routing:** Based on message intent, the ADK agent dynamically invokes:
+  1. `create_support_ticket`: Logs incident records into database/ticketing state.
+  2. `check_schedule_and_draft_slot`: Evaluates technician schedule availability for consultation requests.
+  3. `stage_sms_reply`: Generates a professional, contextual draft response.
+
+### 4.3 Visual Dispatcher Dashboard
+
+- **Split-Screen Layout:** Interactive simulator on the left with preset panic and routine inquiry buttons; real-time agent execution trace on the right.
+- **Live Status Feed:** Displays execution step timestamps, status badges, and structured ticket parameters.
+
+---
+
+## 5. Non-Functional & Technical Constraints
+
+- **Inference Latency:** Target < 1.5 seconds for complete agent reasoning and tool dispatch using `gemini-3.5-flash`.
+- **Deployment Target:** Containerized deployment on Google Cloud Run with scale-to-zero capability to optimize infrastructure costs.
+- **SDK Compliance:** Direct utilization of Google GenAI SDK (`google-genai`) and Google Agent Development Kit (`google-adk`).
+
+---
+
+## 6. Success Metrics for Hackathon Evaluation
+
+- 100% schema enforcement compliance without JSON parsing errors.
+- Dynamic multi-tool execution based on varying inbound prompt intent.
+- Complete reproducible local setup in under 3 commands (`docker-compose up` or CLI startup).
+
+
+======================================================================
+FILE: docs\structure1.txt
+======================================================================
+taskmaster/
+├── backend/
+│   ├── Dockerfile                                <── Container definition for Cloud Run
+│   ├── requirements.txt                          <── Python dependencies (FastAPI, ADK, GenAI SDK)
+│   ├── tests/
+│   │   └── test_agent.py                         <── Unit tests for tools and triage logic
+│   └── src/
+│       ├── main.py                               <── FastAPI app instantiation & route registration
+│       ├── config.py                             <── Environment variables & API credentials
+│       ├── api/
+│       │   └── routes/
+│       │       ├── webhooks.py                   <── POST /webhook/pubsub (Inbound Cloud Pub/Sub push)
+│       │       └── simulate.py                   <── POST /api/simulate (Frontend live testing endpoint)
+│       ├── services/
+│       │   ├── ai/
+│       │   │   ├── triage_agent.py               <── Google ADK Agent initialization & system prompts
+│       │   │   └── tools.py                      <── Agent tools (create_ticket, check_schedule, stage_reply)
+│       │   ├── integrations/
+│       │   │   ├── pubsub.py                     <── Payload decoding & base64 parsing
+│       │   │   ├── gmail.py                      <── Gmail API client connector
+│       │   │   └── calendar.py                   <── Google Calendar availability connector
+│       │   └── tickets/
+│       │       └── ticket_manager.py             <── Ticket database CRUD operations
+│       └── models/
+│           ├── ticket.py                         <── Pydantic schemas (ExtractedTicket, TriageResponse)
+│           └── pubsub.py                         <── Pub/Sub push event payload models
+├── frontend/
+│   ├── package.json                              <── Node dependencies (React, Vite, Lucide, Tailwind)
+│   ├── vite.config.js                            <── Vite development server configuration
+│   ├── tailwind.config.js                        <── Tailwind CSS styling configuration
+│   └── src/
+│       ├── main.jsx                              <── React DOM root mounting
+│       ├── index.css                             <── Tailwind base directives
+│       ├── App.jsx                               <── Split-screen visualizer & dashboard
+│       ├── components/
+│       │   ├── ExecutionLog.jsx                  <── Automated execution trace component
+│       │   ├── TicketSummary.jsx                 <── AI structured extraction display card
+│       │   └── ChannelSimulator.jsx              <── Client message input & trigger controls
+│       └── pages/
+│           └── Dashboard.jsx                     <── Main technician mission control view
+├── docs/
+│   ├── prd.md                                    <── Project requirements, Discord notes, user stories
+│   ├── architecture_notes.md                     <── Pub/Sub flow, GCP setup steps, and gcloud CLI commands
+│   └── demo_flow.md                              <── Hackathon demo presentation script & testing steps
+├── .env.example                                  <── Template for GEMINI_API_KEY, GCP_PROJECT_ID, etc.
+├── .gitignore                                    <── Ignores node_modules, __pycache__, .env, dist
+├── docker-compose.yml                            <── Spins up frontend and backend locally with one command
+└── README.md                                     <── Hackathon overview & reproducible testing instructions
+
+
+======================================================================
+FILE: docs\structure2.txt
+======================================================================
+taskmaster/
+├── backend/
+│   ├── Dockerfile                                <── Container definition for Cloud Run
+│   ├── requirements.txt                          <── Python dependencies (FastAPI, ADK, GenAI SDK)
+│   ├── pyproject.toml                            <── Project build configuration & tool definitions
+│   ├── tests/
+│   │   └── test_agent.py                         <── Unit tests for tools and triage logic
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py                               <── FastAPI app instantiation & route registration
+│       ├── config.py                             <── Environment variables & API credentials
+│       ├── core/                                 <── Core application settings, logging, and security
+│       ├── verticals/                            <── Vertical-specific business logic & workflows
+│       ├── api/
+│       │   ├── __init__.py
+│       │   └── routes/
+│       │       ├── __init__.py
+│       │       ├── webhooks.py                   <── POST /webhook/pubsub (Cloud Pub/Sub push receiver)
+│       │       └── simulate.py                   <── POST /api/simulate (Frontend live testing endpoint)
+│       ├── models/
+│       │   ├── __init__.py
+│       │   ├── base.py                           <── Base Pydantic models & ORM mixins
+│       │   ├── common.py                         <── Shared data schemas & status responses
+│       │   ├── enums.py                          <── Urgency, category, and state enums
+│       │   ├── customer.py                       <── Client & contact schemas
+│       │   ├── ticket.py                         <── Support ticket data models & CRUD contracts
+│       │   ├── appointment.py                    <── Calendar booking & scheduling models
+│       │   ├── classification.py                 <── AI intent & urgency classification contracts
+│       │   ├── message.py                        <── Inbound raw communication models
+│       │   ├── reply.py                          <── Staged draft response contracts
+│       │   └── pipeline.py                       <── End-to-end triage execution trace models
+│       └── services/
+│           ├── __init__.py
+│           ├── ai/
+│           │   ├── __init__.py
+│           │   ├── triage_agent.py               <── Google ADK Agent initialization & system prompts
+│           │   └── tools.py                      <── Agent tools (create_ticket, check_schedule, stage_reply)
+│           ├── integrations/
+│           │   ├── __init__.py
+│           │   ├── pubsub.py                     <── Payload decoding & base64 parsing
+│           │   ├── gmail.py                      <── Gmail API client connector
+│           │   └── calendar.py                   <── Google Calendar availability connector
+│           └── tickets/
+│               ├── __init__.py
+│               └── ticket_manager.py             <── Ticket database CRUD operations & state
+├── frontend/
+│   ├── package.json                              <── Node dependencies (React, Vite, Lucide, Tailwind)
+│   ├── vite.config.js                            <── Vite development server configuration
+│   ├── tailwind.config.js                        <── Tailwind CSS styling configuration
+│   ├── postcss.config.js                         <── PostCSS configuration for Tailwind directives
+│   ├── index.html                                <── Root HTML entry point
+│   └── src/
+│       ├── main.jsx                              <── React DOM root mounting
+│       ├── index.css                             <── Tailwind base directives
+│       ├── App.jsx                               <── Split-screen visualizer & dashboard
+│       ├── components/
+│       │   ├── ExecutionLog.jsx                  <── Automated execution trace component
+│       │   ├── TicketSummary.jsx                 <── AI structured extraction display card
+│       │   └── ChannelSimulator.jsx              <── Client message input & trigger controls
+│       └── pages/
+│           └── Dashboard.jsx                     <── Main technician mission control view
+├── docs/
+│   ├── prd.md                                    <── Project requirements, Discord notes, user stories
+│   ├── architecture_notes.md                     <── Pub/Sub flow, GCP setup steps, and gcloud CLI commands
+│   ├── demo_flow.md                              <── Hackathon demo presentation script & testing steps
+│   └── structure.txt                             <── Repository folder hierarchy & module map
+├── .env.example                                  <── Template for GEMINI_API_KEY, GCP_PROJECT_ID, etc.
+├── .gitignore                                    <── Ignores node_modules, __pycache__, .env, dist
+├── docker-compose.yml                            <── Spins up frontend and backend locally with one command
+├── GEMINI.md                                     <── Team context & operational guidelines for AI assistants
+└── README.md                                     <── Hackathon overview & reproducible testing instructions
+
+
+======================================================================
+FILE: frontend\index.html
+======================================================================
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Taskmaster - Autonomous Triage Dashboard</title>
+  </head>
+  <body class="bg-slate-950 text-slate-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+======================================================================
+FILE: frontend\package.json
+======================================================================
+{
+  "name": "taskmaster-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^0.344.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.1.6"
+  }
+}
+
+
+======================================================================
+FILE: frontend\postcss.config.js
+======================================================================
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+
+======================================================================
+FILE: frontend\tailwind.config.js
+======================================================================
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+
+
+======================================================================
+FILE: frontend\vite.config.js
+======================================================================
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    host: true,
+  },
+});
+
+
+======================================================================
+FILE: frontend\src\App.jsx
+======================================================================
+import React, { useState } from "react";
+import {
+  Terminal,
+  Send,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Server,
+  MessageSquare,
+  RefreshCw,
+  Cpu,
+} from "lucide-react";
+
+const PRESET_MESSAGES = [
+  "Our main switch is down and the office network is completely dead! We have clients arriving in 20 minutes!",
+  "My laptop screen is flickering blue and won't boot into Windows after the update.",
+  "Looking to get a quote on setting up a new mesh Wi-Fi network for our small warehouse.",
+];
+
+export default function TaskmasterVisualizer() {
+  const [inputMessage, setInputMessage] = useState(PRESET_MESSAGES[0]);
+  const [clientName, setClientName] = useState("Alice Smith");
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const [analysis, setAnalysis] = useState({
+    timestamp: "2026-08-22 15:04:12 UTC",
+    client: "Alice Smith",
+    category: "Network / Infrastructure",
+    urgency: "Critical / High",
+    deviceType: "Enterprise Switch / Gateway",
+    summary: "Complete local area network failure affecting office operations.",
+  });
+
+  const [logs, setLogs] = useState([
+    {
+      id: 1,
+      time: "15:04:13",
+      text: "Ingestion verified from Client Webhook.",
+      status: "ok",
+    },
+    {
+      id: 2,
+      time: "15:04:14",
+      text: "Extracted parameters: Urgency=Critical, Target=Switch.",
+      status: "ok",
+    },
+    {
+      id: 3,
+      time: "15:04:16",
+      text: "Created Priority CRM Support Ticket #1042.",
+      status: "ok",
+    },
+    {
+      id: 4,
+      time: "15:04:18",
+      text: "Calendar Dispatch: Reserved Emergency Support window.",
+      status: "ok",
+    },
+    {
+      id: 5,
+      time: "15:04:20",
+      text: "Client Notified (SMS): Sent power-cycle checklist.",
+      status: "ok",
+    },
+    {
+      id: 6,
+      time: "15:04:22",
+      text: "Status transitioned to: Dispatched (Awaiting Tech).",
+      status: "active",
+    },
+  ]);
+
+  const handleSimulate = () => {
+    setIsProcessing(true);
+    setLogs([]);
+
+    setTimeout(() => {
+      const now =
+        new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC";
+      setAnalysis({
+        timestamp: now,
+        client: clientName,
+        category:
+          inputMessage.toLowerCase().includes("switch") ||
+          inputMessage.toLowerCase().includes("network")
+            ? "Network / Infrastructure"
+            : "Workstation / OS Support",
+        urgency:
+          inputMessage.toLowerCase().includes("dead") ||
+          inputMessage.toLowerCase().includes("minutes")
+            ? "Critical / High"
+            : "Standard Priority",
+        deviceType: inputMessage.toLowerCase().includes("switch")
+          ? "Managed Switch"
+          : "Client PC / Laptop",
+        summary: inputMessage,
+      });
+
+      setLogs([
+        {
+          id: 1,
+          time: "15:05:01",
+          text: `Ingested payload from ${clientName}.`,
+          status: "ok",
+        },
+        {
+          id: 2,
+          time: "15:05:02",
+          text: "Gemini 3.5 Flash: JSON Schema validation passed.",
+          status: "ok",
+        },
+        {
+          id: 3,
+          time: "15:05:03",
+          text: "Ticket #1043 appended to dispatch queue.",
+          status: "ok",
+        },
+        {
+          id: 4,
+          time: "15:05:04",
+          text: "Autonomous calendar lock verified with Google Workspace.",
+          status: "ok",
+        },
+        {
+          id: 5,
+          time: "15:05:05",
+          text: "Auto-acknowledgment sent via Twilio / SendGrid.",
+          status: "ok",
+        },
+      ]);
+      setIsProcessing(false);
+    }, 1000);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-10 flex flex-col justify-between">
+      {/* Top Header */}
+      <header className="flex items-center justify-between pb-6 border-b border-slate-800 mb-8">
+        <div className="flex items-center space-x-4">
+          <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <Cpu className="w-7 h-7" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-2xl font-bold tracking-tight text-white">
+                TASKMASTER
+              </h1>
+              <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                AGENT ACTIVE
+              </span>
+            </div>
+            <p className="text-sm text-slate-400 mt-0.5">
+              Autonomous IT Client Dispatch & Triage Coordinator
+            </p>
+          </div>
+        </div>
+        <div className="text-sm text-slate-400 font-mono flex items-center space-x-2 bg-slate-900 px-4 py-2 rounded-lg border border-slate-800">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Google GenAI SDK · Gemini 3.5 Flash</span>
+        </div>
+      </header>
+
+      {/* Main Split Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
+        {/* Left Side: Client Simulator */}
+        <div className="lg:col-span-5 flex flex-col justify-between bg-slate-900/60 border border-slate-800 rounded-2xl p-7 shadow-xl">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <span className="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-emerald-400" /> Inbound
+                Client Channel
+              </span>
+              <span className="text-xs font-mono text-slate-400 bg-slate-800/80 px-2 py-1 rounded">
+                Channel: Web / SMS
+              </span>
+            </div>
+
+            {/* Presets */}
+            <div>
+              <label className="text-sm text-slate-300 block mb-2 font-medium">
+                Quick Presets:
+              </label>
+              <div className="flex flex-col gap-2.5">
+                {PRESET_MESSAGES.map((msg, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInputMessage(msg)}
+                    className="text-left text-sm bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 p-3 rounded-xl text-slate-200 transition-colors"
+                  >
+                    "{msg}"
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Inputs */}
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-300 block mb-1.5">
+                  Client Name
+                </label>
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-base text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-300 block mb-1.5">
+                  Unstructured Issue Description
+                </label>
+                <textarea
+                  rows={4}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-4 text-base text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  placeholder="Describe the issue..."
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSimulate}
+            disabled={isProcessing}
+            className="w-full mt-6 py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2.5 text-base shadow-lg shadow-emerald-950/50"
+          >
+            {isProcessing ? (
+              <RefreshCw className="w-5 h-5 animate-spin" />
+            ) : (
+              <Send className="w-5 h-5" />
+            )}
+            {isProcessing
+              ? "Agent Orchestrating..."
+              : "Simulate Incoming Request"}
+          </button>
+        </div>
+
+        {/* Right Side: Taskmaster Mission Control */}
+        <div className="lg:col-span-7 flex flex-col space-y-6">
+          {/* AI Structured Extraction Box */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-7 shadow-xl">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+              <span className="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <Server className="w-5 h-5 text-emerald-400" /> AI Extraction &
+                Context Analysis
+              </span>
+              <div className="flex items-center gap-2 text-sm font-mono text-slate-400">
+                <Clock className="w-4 h-4" />
+                <span>{analysis.timestamp}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+                  Category
+                </span>
+                <span className="text-base font-bold text-slate-100 mt-1 block">
+                  {analysis.category}
+                </span>
+              </div>
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+                  Urgency Rating
+                </span>
+                <span
+                  className={`text-base font-bold mt-1 inline-flex items-center gap-2 ${
+                    analysis.urgency.includes("Critical")
+                      ? "text-rose-400"
+                      : "text-amber-400"
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  {analysis.urgency}
+                </span>
+              </div>
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+                  Detected Device
+                </span>
+                <span className="text-base font-bold text-slate-100 mt-1 block">
+                  {analysis.deviceType}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl text-sm text-slate-200 leading-relaxed">
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
+                Triaged Issue Summary:
+              </span>
+              "{analysis.summary}"
+            </div>
+          </div>
+
+          {/* Execution Log */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-7 shadow-xl flex-1 flex flex-col font-mono text-sm">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+              <span className="font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <Terminal className="w-5 h-5 text-emerald-400" /> Automated
+                Execution Trace
+              </span>
+              <span className="text-xs text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-800/50">
+                Autonomous Mode: ON
+              </span>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto flex-1 pr-2">
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-start space-x-3 py-2 border-b border-slate-800/60 last:border-0"
+                >
+                  <span className="text-slate-500 shrink-0 font-medium">
+                    [{log.time}]
+                  </span>
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                  <span className="text-slate-200 text-sm leading-snug">
+                    {log.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+======================================================================
+FILE: frontend\src\index.css
+======================================================================
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+======================================================================
+FILE: frontend\src\main.jsx
+======================================================================
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+
+
+======================================================================
+FILE: frontend\src\components\ChannelSimulator.jsx
+======================================================================
+
+
+======================================================================
+FILE: frontend\src\components\ExecutionLog.jsx
+======================================================================
+
+
+======================================================================
+FILE: frontend\src\components\TicketSummary.jsx
+======================================================================
+
+
+======================================================================
+FILE: frontend\src\pages\Dashboard.jsx
+======================================================================
+
