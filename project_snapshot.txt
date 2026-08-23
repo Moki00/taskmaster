@@ -3,19 +3,48 @@ TASKMASTER PROJECT DIRECTORY TREE
 taskmaster/
 ├── .env.example
 ├── .gitignore
+├── .vscode
+│   └── settings.json
 ├── GEMINI.md
 ├── README.md
 ├── backend
+│   ├── .env
 │   ├── .env.example
 │   ├── .gitignore
 │   ├── Dockerfile
 │   ├── README.md
 │   ├── app
 │   │   ├── __init__.py
+│   │   ├── agents
+│   │   │   ├── __init__.py
+│   │   │   ├── classifier_agent.py
+│   │   │   ├── intake_agent.py
+│   │   │   ├── pipeline.py
+│   │   │   ├── reply_agent.py
+│   │   │   ├── scheduler_agent.py
+│   │   │   └── ticket_agent.py
+│   │   ├── api
+│   │   │   ├── __init__.py
+│   │   │   └── routes
+│   │   │       ├── __init__.py
+│   │   │       ├── simulate.py
+│   │   │       ├── tickets.py
+│   │   │       └── webhooks.py
+│   │   ├── channels
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── email_gmail.py
+│   │   │   ├── sms_twilio.py
+│   │   │   └── web.py
 │   │   ├── config.py
 │   │   ├── core
 │   │   │   ├── __init__.py
+│   │   │   ├── errors.py
 │   │   │   └── timing.py
+│   │   ├── integrations
+│   │   │   ├── __init__.py
+│   │   │   ├── calendar_client.py
+│   │   │   └── gemini_client.py
 │   │   ├── main.py
 │   │   ├── models
 │   │   │   ├── __init__.py
@@ -48,15 +77,16 @@ taskmaster/
 │   └── tests
 │       ├── test_agent.py
 │       ├── test_models.py
+│       ├── test_pipeline.py
 │       ├── test_repository.py
 │       └── test_verticals.py
+├── cleanup.ps
 ├── docker-compose.yml
 ├── docs
 │   ├── architecture_notes.md
 │   ├── demo_flow.md
 │   ├── prd.md
-│   ├── structure1.txt
-│   └── structure2.txt
+│   └── structure.txt
 └── frontend
     ├── index.html
     ├── package-lock.json
@@ -81,7 +111,23 @@ FILE CONTENTS
 ======================================================================
 FILE: .env.example
 ======================================================================
+# --- Runtime ---
+ENV=local
+LOG_LEVEL=INFO
 
+# --- Gemini AI ---
+GEMINI_API_KEY=your_individual_google_ai_studio_key_here
+GEMINI_MODEL=gemini-3.5-flash
+
+# --- Google Cloud Project Reference ---
+GCP_PROJECT_ID=hackathon8-20
+FIRESTORE_COLLECTION_PREFIX=taskmaster
+
+# --- Active Vertical Configuration ---
+ACTIVE_VERTICAL=it_support
+
+# --- Safety Toggles ---
+AUTO_SEND_REPLIES=false
 
 ======================================================================
 FILE: .gitignore
@@ -490,6 +536,81 @@ consuming this backend's API.
 
 
 ======================================================================
+FILE: cleanup.ps
+======================================================================
+# 1. Clean up deprecated or duplicate files
+$staleFiles = @(
+    "docs/structure1.txt",
+    "docs/structure2.txt"
+)
+
+foreach ($f in $staleFiles) {
+    if (Test-Path $f) {
+        Remove-Item -Path $f -Force
+        Write-Host "Removed obsolete file: $f" -ForegroundColor Yellow
+    }
+}
+
+# 2. Define all required directories
+$dirs = @(
+    "backend/app/core",
+    "backend/app/models",
+    "backend/app/verticals/packs",
+    "backend/app/agents",
+    "backend/app/channels",
+    "backend/app/integrations",
+    "backend/app/services",
+    "backend/app/api/routes",
+    "backend/tests",
+    "frontend/src/components",
+    "frontend/src/pages",
+    "docs"
+)
+
+foreach ($d in $dirs) {
+    if (-not (Test-Path $d)) {
+        New-Item -ItemType Directory -Force -Path $d | Out-Null
+        Write-Host "Created directory: $d" -ForegroundColor Cyan
+    }
+}
+
+# 3. Define all required files (will NOT overwrite existing files)
+$files = @(
+    "backend/app/core/errors.py",
+    "backend/app/agents/__init__.py",
+    "backend/app/agents/pipeline.py",
+    "backend/app/agents/intake_agent.py",
+    "backend/app/agents/classifier_agent.py",
+    "backend/app/agents/ticket_agent.py",
+    "backend/app/agents/reply_agent.py",
+    "backend/app/agents/scheduler_agent.py",
+    "backend/app/channels/__init__.py",
+    "backend/app/channels/base.py",
+    "backend/app/channels/web.py",
+    "backend/app/channels/email_gmail.py",
+    "backend/app/channels/sms_twilio.py",
+    "backend/app/integrations/__init__.py",
+    "backend/app/integrations/gemini_client.py",
+    "backend/app/integrations/calendar_client.py",
+    "backend/app/api/__init__.py",
+    "backend/app/api/routes/__init__.py",
+    "backend/app/api/routes/simulate.py",
+    "backend/app/api/routes/tickets.py",
+    "backend/app/api/routes/webhooks.py",
+    "backend/tests/test_pipeline.py",
+    "docs/structure.txt"
+)
+
+foreach ($f in $files) {
+    if (-not (Test-Path $f)) {
+        New-Item -ItemType File -Force -Path $f | Out-Null
+        Write-Host "Created placeholder: $f" -ForegroundColor Green
+    }
+}
+
+Write-Host "`nTaskmaster directory structure aligned successfully!" -ForegroundColor Green
+
+======================================================================
 FILE: docker-compose.yml
 ======================================================================
 version: "3.8"
@@ -506,6 +627,52 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+
+
+======================================================================
+FILE: .vscode\settings.json
+======================================================================
+{
+  "python-envs.defaultEnvManager": "ms-python.python:system"
+}
+
+
+======================================================================
+FILE: backend\.env
+======================================================================
+# Copy this file to .env and fill in real values. Never commit .env.
+
+# ── Runtime ───────────────────────────────────────────────────────────────
+ENV=local                          # local | dev | staging | production
+LOG_LEVEL=INFO                     # DEBUG | INFO | WARNING | ERROR
+
+# ── Gemini (required) ────────────────────────────────────────────────────
+GEMINI_API_KEY=                    # API key for Gemini 3.5 (Google AI Studio or Vertex AI).
+GEMINI_MODEL=gemini-3.5-flash      # Gemini model id used by every agent's LLM calls. Change here, never per-agent.
+
+# ── Google Cloud (required) ──────────────────────────────────────────────
+GCP_PROJECT_ID=                    # GCP project backing Firestore, Calendar, and Gmail.
+FIRESTORE_COLLECTION_PREFIX=taskmaster   # Prefix applied to every Firestore collection name (e.g. "<prefix>_tickets").
+
+# ── Vertical config (required) ───────────────────────────────────────────
+ACTIVE_VERTICAL=it_support         # Name of the vertical config pack to load from app/verticals/packs/ (no file extension).
+
+# ── Gmail channel (email ingestion + sending) ────────────────────────────
+GMAIL_CLIENT_ID=                   # OAuth 2.0 client ID for the Gmail API.
+GMAIL_CLIENT_SECRET=               # OAuth 2.0 client secret for the Gmail API.
+GMAIL_REFRESH_TOKEN=               # Long-lived OAuth refresh token for the mailbox Taskmaster reads from and sends as.
+GMAIL_SENDER_EMAIL=                # Mailbox address Taskmaster sends replies from.
+
+# ── Twilio channel (SMS + voice) ─────────────────────────────────────────
+TWILIO_ACCOUNT_SID=                # Twilio account SID.
+TWILIO_AUTH_TOKEN=                 # Twilio auth token.
+TWILIO_FROM_NUMBER=                # Twilio phone number Taskmaster sends SMS/voice from, E.164 format (e.g. +15551234567).
+
+# ── Scheduler ─────────────────────────────────────────────────────────────
+CALENDAR_ID=                       # Google Calendar ID the Scheduler Agent checks and books appointments into.
+
+# ── Safety switch ─────────────────────────────────────────────────────────
+AUTO_SEND_REPLIES=false            # true = Reply Agent sends replies automatically. false = drafts only (safe default for demos).
 
 
 ======================================================================
@@ -746,7 +913,7 @@ settings = _load_settings()
 ======================================================================
 FILE: backend\app\main.py
 ======================================================================
-"""FastAPI app entrypoint. No agent or channel routes here yet — /health only."""
+"""FastAPI app entrypoint with route registration and CORS."""
 from __future__ import annotations
 
 import logging
@@ -756,16 +923,17 @@ from importlib.metadata import PackageNotFoundError, version
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from app.api.routes.simulate import router as simulate_router
 from app.config import settings
 
 try:
     APP_VERSION = version("taskmaster-backend")
 except PackageNotFoundError:
     APP_VERSION = "0.0.0-dev"
-
 
 def _configure_logging() -> None:
     level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
@@ -784,48 +952,42 @@ def _configure_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
-
 _configure_logging()
 log = structlog.get_logger("taskmaster")
 
-
 class RequestIDMiddleware(BaseHTTPMiddleware):
-    """Binds a request id to every log line emitted while handling a request, and logs start/end + latency."""
-
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
-
         start = time.perf_counter()
         log.info("request_started", method=request.method, path=request.url.path)
         try:
             response: Response = await call_next(request)
         except Exception:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-            log.exception(
-                "request_failed",
-                method=request.method,
-                path=request.url.path,
-                elapsed_ms=elapsed_ms,
-            )
+            log.exception("request_failed", method=request.method, path=request.url.path, elapsed_ms=elapsed_ms)
             raise
 
         elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
         response.headers["X-Request-ID"] = request_id
-        log.info(
-            "request_finished",
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            elapsed_ms=elapsed_ms,
-        )
+        log.info("request_finished", method=request.method, path=request.url.path, status_code=response.status_code, elapsed_ms=elapsed_ms)
         return response
-
 
 app = FastAPI(title="Taskmaster API", version=APP_VERSION)
 app.add_middleware(RequestIDMiddleware)
 
+# Enable CORS for local Vite development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Route registration
+app.include_router(simulate_router)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -836,9 +998,227 @@ async def health() -> dict[str, str]:
         "active_vertical": settings.ACTIVE_VERTICAL,
     }
 
+======================================================================
+FILE: backend\app\agents\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\agents\classifier_agent.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\agents\intake_agent.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\agents\pipeline.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\agents\reply_agent.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\agents\scheduler_agent.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\agents\ticket_agent.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\api\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\api\routes\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\api\routes\simulate.py
+======================================================================
+"""Simulation endpoint for the frontend dashboard."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import uuid
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from app.core.timing import timed_stage
+from app.models import (
+    Channel,
+    NormalizedMessage,
+    Sender,
+    Sentiment,
+    TicketDraft,
+    Urgency,
+)
+from app.services.repository import get_repository
+from app.verticals import get_active_vertical
+
+router = APIRouter(prefix="/api", tags=["simulation"])
+
+
+class SimulationRequest(BaseModel):
+    client_name: str = Field(default="Alice Smith")
+    message: str
+
+
+class SimulationResponse(BaseModel):
+    timestamp: str
+    client: str
+    category: str
+    urgency: str
+    device_type: str
+    summary: str
+    ticket_number: str
+    logs: list[dict[str, str]]
+
+
+@router.post("/simulate", response_model=SimulationResponse)
+async def run_simulation(payload: SimulationRequest) -> SimulationResponse:
+    repo = get_repository()
+    vertical = get_active_vertical()
+    intake_id = f"intake-{uuid.uuid4().hex[:8]}"
+    logs: list[dict[str, str]] = []
+
+    # 1. Intake
+    async with timed_stage("intake_agent", correlation_id=intake_id):
+        norm_msg = NormalizedMessage(
+            intake_id=intake_id,
+            vertical=vertical.key,
+            channel=Channel.WEB_FORM,
+            sender=Sender(name=payload.client_name),
+            body_text=payload.message,
+        )
+        logs.append({
+            "id": "1",
+            "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+            "text": f"Ingestion verified: Received payload from {payload.client_name}.",
+            "status": "ok",
+        })
+
+    # 2. Heuristic / Agent Triage against active vertical
+    async with timed_stage("classifier_agent", correlation_id=intake_id):
+        msg_lower = payload.message.lower()
+        
+        # Match issue type against vertical pack
+        issue_type = "other"
+        for it in vertical.issue_types:
+            if any(example.lower() in msg_lower for example in it.examples) or it.name in msg_lower:
+                issue_type = it.name
+                break
+        if issue_type == "other" and vertical.issue_types:
+            issue_type = vertical.issue_types[0].name
+
+        urgency = Urgency.LOW
+        if any(term in msg_lower for term in ["down", "dead", "emergency", "severe", "outage", "minutes"]):
+            urgency = Urgency.CRITICAL
+        elif any(term in msg_lower for term in ["broken", "flickering", "urgent"]):
+            urgency = Urgency.HIGH
+
+        detected_device = "Network / Gateway" if "switch" in msg_lower or "network" in msg_lower else "Workstation / Laptop"
+
+        logs.append({
+            "id": "2",
+            "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+            "text": f"Classifier Agent: Category='{issue_type}', Urgency='{urgency.value}'.",
+            "status": "ok",
+        })
+
+    # 3. Create Ticket
+    async with timed_stage("ticket_agent", correlation_id=intake_id):
+        ticket_draft = TicketDraft(
+            intake_id=intake_id,
+            vertical=vertical.key,
+            customer=norm_msg.sender,
+            issue_type=issue_type,
+            priority=urgency,
+            title=f"{issue_type.replace('_', ' ').title()} reported by {payload.client_name}",
+            description=payload.message,
+            extracted_details={"detected_device": detected_device},
+            sentiment=Sentiment.ANNOYED if urgency in [Urgency.HIGH, Urgency.CRITICAL] else Sentiment.CALM,
+            confidence=0.92,
+            assigned_to=vertical.resolve_assignee(issue_type, urgency),
+        )
+        ticket = await repo.create_ticket(ticket_draft)
+        logs.append({
+            "id": "3",
+            "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+            "text": f"Ticket Agent: Created CRM Ticket #{ticket.ticket_number} (Assigned to {ticket.assigned_to}).",
+            "status": "ok",
+        })
+
+    logs.append({
+        "id": "4",
+        "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+        "text": "Reply Agent: Draft response queued for client acknowledgment.",
+        "status": "ok",
+    })
+
+    return SimulationResponse(
+        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        client=payload.client_name,
+        category=issue_type.replace("_", " ").title(),
+        urgency=f"{urgency.value.title()} Priority" if urgency != Urgency.CRITICAL else "Critical / High",
+        device_type=detected_device,
+        summary=payload.message,
+        ticket_number=ticket.ticket_number,
+        logs=logs,
+    )
+
+======================================================================
+FILE: backend\app\api\routes\tickets.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\api\routes\webhooks.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\channels\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\channels\base.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\channels\email_gmail.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\channels\sms_twilio.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\channels\web.py
+======================================================================
+
 
 ======================================================================
 FILE: backend\app\core\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\core\errors.py
 ======================================================================
 
 
@@ -924,6 +1304,21 @@ async def timed_stage(
         event_bus.publish(
             StageEvent(stage=stage, elapsed_ms=elapsed_ms, correlation_id=cid, metadata=metadata)
         )
+
+
+======================================================================
+FILE: backend\app\integrations\__init__.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\integrations\calendar_client.py
+======================================================================
+
+
+======================================================================
+FILE: backend\app\integrations\gemini_client.py
+======================================================================
 
 
 ======================================================================
@@ -2983,6 +3378,11 @@ def test_issue_type_rejected_when_not_in_context_taxonomy():
 
 
 ======================================================================
+FILE: backend\tests\test_pipeline.py
+======================================================================
+
+
+======================================================================
 FILE: backend\tests\test_repository.py
 ======================================================================
 """Repository tests, run entirely against InMemoryRepo (no GCP credentials needed)."""
@@ -3623,133 +4023,115 @@ Taskmaster solves this by running an autonomous, background triage agent loop th
 
 
 ======================================================================
-FILE: docs\structure1.txt
+FILE: docs\structure.txt
 ======================================================================
 taskmaster/
 ├── backend/
-│   ├── Dockerfile                                <── Container definition for Cloud Run
-│   ├── requirements.txt                          <── Python dependencies (FastAPI, ADK, GenAI SDK)
-│   ├── tests/
-│   │   └── test_agent.py                         <── Unit tests for tools and triage logic
-│   └── src/
-│       ├── main.py                               <── FastAPI app instantiation & route registration
-│       ├── config.py                             <── Environment variables & API credentials
-│       ├── api/
-│       │   └── routes/
-│       │       ├── webhooks.py                   <── POST /webhook/pubsub (Inbound Cloud Pub/Sub push)
-│       │       └── simulate.py                   <── POST /api/simulate (Frontend live testing endpoint)
-│       ├── services/
-│       │   ├── ai/
-│       │   │   ├── triage_agent.py               <── Google ADK Agent initialization & system prompts
-│       │   │   └── tools.py                      <── Agent tools (create_ticket, check_schedule, stage_reply)
-│       │   ├── integrations/
-│       │   │   ├── pubsub.py                     <── Payload decoding & base64 parsing
-│       │   │   ├── gmail.py                      <── Gmail API client connector
-│       │   │   └── calendar.py                   <── Google Calendar availability connector
-│       │   └── tickets/
-│       │       └── ticket_manager.py             <── Ticket database CRUD operations
-│       └── models/
-│           ├── ticket.py                         <── Pydantic schemas (ExtractedTicket, TriageResponse)
-│           └── pubsub.py                         <── Pub/Sub push event payload models
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   ├── requirements.txt
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                               # FastAPI app, CORS, middleware, route mounting
+│   │   ├── config.py                             # Pydantic Settings (ENV, GEMINI_API_KEY, ACTIVE_VERTICAL)
+│   │   │
+│   │   ├── core/                                 # Cross-cutting infrastructure
+│   │   │   ├── __init__.py
+│   │   │   ├── timing.py                         # timed_stage context manager & EventBus
+│   │   │   └── errors.py                         # Custom application exception definitions
+│   │   │
+│   │   ├── models/                               # Shared Pydantic v2 data contracts
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                           # TaskmasterModel base (extra="forbid")
+│   │   │   ├── enums.py                          # Urgency, TicketStatus, Channel, Sentiment
+│   │   │   ├── common.py                         # Sender, Attachment, validate_issue_type
+│   │   │   ├── message.py                        # NormalizedMessage
+│   │   │   ├── classification.py                 # Classification output contract
+│   │   │   ├── ticket.py                         # Ticket, TicketDraft, TicketHistoryEntry
+│   │   │   ├── reply.py                          # ReplyDraft
+│   │   │   ├── appointment.py                    # Appointment, TimeSlot
+│   │   │   ├── customer.py                       # Customer profile model
+│   │   │   └── pipeline.py                       # PipelineState, StageTiming, PipelineEvent
+│   │   │
+│   │   ├── verticals/                            # Business configuration layer (zero code changes)
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                           # VerticalConfig schema & SLA models
+│   │   │   ├── loader.py                         # YAML loader with caching & active vertical getter
+│   │   │   └── packs/
+│   │   │       ├── it_support.yaml               # Flagship demo pack
+│   │   │       ├── dental_clinic.yaml
+│   │   │       ├── home_services.yaml
+│   │   │       └── property_management.yaml
+│   │   │
+│   │   ├── agents/                               # 5-Stage Google ADK / Gemini pipeline
+│   │   │   ├── __init__.py
+│   │   │   ├── pipeline.py                       # Orchestrator: chains agents and returns PipelineState
+│   │   │   ├── intake_agent.py                   # Ingestion normalization & sender parsing
+│   │   │   ├── classifier_agent.py               # Gemini 3.5 NLU against VerticalConfig
+│   │   │   ├── ticket_agent.py                   # Ticket creation & routing assignment
+│   │   │   ├── reply_agent.py                    # Contextual, empathetic reply drafting
+│   │   │   └── scheduler_agent.py                # Calendar slot checking & booking
+│   │   │
+│   │   ├── channels/                             # Inbound transport adapters
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                           # Base channel interface
+│   │   │   ├── web.py                            # Web form & simulator payload adapter
+│   │   │   ├── email_gmail.py                    # Gmail webhook parser
+│   │   │   └── sms_twilio.py                     # Twilio webhook parser
+│   │   │
+│   │   ├── integrations/                         # External client wrappers (timeout & retry safe)
+│   │   │   ├── __init__.py
+│   │   │   ├── gemini_client.py                  # Google GenAI SDK client helper
+│   │   │   └── calendar_client.py                # Google Calendar API connector
+│   │   │
+│   │   ├── services/                             # Storage & repository implementations
+│   │   │   ├── __init__.py
+│   │   │   ├── repository.py                     # TicketRepository protocol & get_repository()
+│   │   │   ├── firestore_repo.py                 # Async Firestore client implementation
+│   │   │   └── in_memory_repo.py                 # In-memory twin for local testing (ENV=local)
+│   │   │
+│   │   └── api/
+│   │       ├── __init__.py
+│   │       └── routes/
+│   │           ├── __init__.py
+│   │           ├── simulate.py                   # POST /api/simulate (UI demo testing endpoint)
+│   │           ├── tickets.py                    # GET/POST /api/tickets (Dashboard queries)
+│   │           └── webhooks.py                   # POST /webhook/pubsub (Inbound Cloud Pub/Sub push)
+│   │
+│   └── tests/
+│       ├── test_models.py
+│       ├── test_repository.py
+│       ├── test_verticals.py
+│       └── test_pipeline.py
+│
 ├── frontend/
-│   ├── package.json                              <── Node dependencies (React, Vite, Lucide, Tailwind)
-│   ├── vite.config.js                            <── Vite development server configuration
-│   ├── tailwind.config.js                        <── Tailwind CSS styling configuration
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   ├── index.html
 │   └── src/
-│       ├── main.jsx                              <── React DOM root mounting
-│       ├── index.css                             <── Tailwind base directives
-│       ├── App.jsx                               <── Split-screen visualizer & dashboard
+│       ├── main.jsx
+│       ├── index.css
+│       ├── App.jsx                               # Split-screen simulator & mission control
 │       ├── components/
-│       │   ├── ExecutionLog.jsx                  <── Automated execution trace component
-│       │   ├── TicketSummary.jsx                 <── AI structured extraction display card
-│       │   └── ChannelSimulator.jsx              <── Client message input & trigger controls
+│       │   ├── ChannelSimulator.jsx              # Inbound preset & custom message inputs
+│       │   ├── TicketSummary.jsx                 # AI extraction card & urgency badges
+│       │   └── ExecutionLog.jsx                  # Real-time stage execution timeline
 │       └── pages/
-│           └── Dashboard.jsx                     <── Main technician mission control view
+│           └── Dashboard.jsx                     # Full technician operations view
+│
 ├── docs/
-│   ├── prd.md                                    <── Project requirements, Discord notes, user stories
-│   ├── architecture_notes.md                     <── Pub/Sub flow, GCP setup steps, and gcloud CLI commands
-│   └── demo_flow.md                              <── Hackathon demo presentation script & testing steps
-├── .env.example                                  <── Template for GEMINI_API_KEY, GCP_PROJECT_ID, etc.
-├── .gitignore                                    <── Ignores node_modules, __pycache__, .env, dist
-├── docker-compose.yml                            <── Spins up frontend and backend locally with one command
-└── README.md                                     <── Hackathon overview & reproducible testing instructions
-
-
-======================================================================
-FILE: docs\structure2.txt
-======================================================================
-taskmaster/
-├── backend/
-│   ├── Dockerfile                                <── Container definition for Cloud Run
-│   ├── requirements.txt                          <── Python dependencies (FastAPI, ADK, GenAI SDK)
-│   ├── pyproject.toml                            <── Project build configuration & tool definitions
-│   ├── tests/
-│   │   └── test_agent.py                         <── Unit tests for tools and triage logic
-│   └── app/
-│       ├── __init__.py
-│       ├── main.py                               <── FastAPI app instantiation & route registration
-│       ├── config.py                             <── Environment variables & API credentials
-│       ├── core/                                 <── Core application settings, logging, and security
-│       ├── verticals/                            <── Vertical-specific business logic & workflows
-│       ├── api/
-│       │   ├── __init__.py
-│       │   └── routes/
-│       │       ├── __init__.py
-│       │       ├── webhooks.py                   <── POST /webhook/pubsub (Cloud Pub/Sub push receiver)
-│       │       └── simulate.py                   <── POST /api/simulate (Frontend live testing endpoint)
-│       ├── models/
-│       │   ├── __init__.py
-│       │   ├── base.py                           <── Base Pydantic models & ORM mixins
-│       │   ├── common.py                         <── Shared data schemas & status responses
-│       │   ├── enums.py                          <── Urgency, category, and state enums
-│       │   ├── customer.py                       <── Client & contact schemas
-│       │   ├── ticket.py                         <── Support ticket data models & CRUD contracts
-│       │   ├── appointment.py                    <── Calendar booking & scheduling models
-│       │   ├── classification.py                 <── AI intent & urgency classification contracts
-│       │   ├── message.py                        <── Inbound raw communication models
-│       │   ├── reply.py                          <── Staged draft response contracts
-│       │   └── pipeline.py                       <── End-to-end triage execution trace models
-│       └── services/
-│           ├── __init__.py
-│           ├── ai/
-│           │   ├── __init__.py
-│           │   ├── triage_agent.py               <── Google ADK Agent initialization & system prompts
-│           │   └── tools.py                      <── Agent tools (create_ticket, check_schedule, stage_reply)
-│           ├── integrations/
-│           │   ├── __init__.py
-│           │   ├── pubsub.py                     <── Payload decoding & base64 parsing
-│           │   ├── gmail.py                      <── Gmail API client connector
-│           │   └── calendar.py                   <── Google Calendar availability connector
-│           └── tickets/
-│               ├── __init__.py
-│               └── ticket_manager.py             <── Ticket database CRUD operations & state
-├── frontend/
-│   ├── package.json                              <── Node dependencies (React, Vite, Lucide, Tailwind)
-│   ├── vite.config.js                            <── Vite development server configuration
-│   ├── tailwind.config.js                        <── Tailwind CSS styling configuration
-│   ├── postcss.config.js                         <── PostCSS configuration for Tailwind directives
-│   ├── index.html                                <── Root HTML entry point
-│   └── src/
-│       ├── main.jsx                              <── React DOM root mounting
-│       ├── index.css                             <── Tailwind base directives
-│       ├── App.jsx                               <── Split-screen visualizer & dashboard
-│       ├── components/
-│       │   ├── ExecutionLog.jsx                  <── Automated execution trace component
-│       │   ├── TicketSummary.jsx                 <── AI structured extraction display card
-│       │   └── ChannelSimulator.jsx              <── Client message input & trigger controls
-│       └── pages/
-│           └── Dashboard.jsx                     <── Main technician mission control view
-├── docs/
-│   ├── prd.md                                    <── Project requirements, Discord notes, user stories
-│   ├── architecture_notes.md                     <── Pub/Sub flow, GCP setup steps, and gcloud CLI commands
-│   ├── demo_flow.md                              <── Hackathon demo presentation script & testing steps
-│   └── structure.txt                             <── Repository folder hierarchy & module map
-├── .env.example                                  <── Template for GEMINI_API_KEY, GCP_PROJECT_ID, etc.
-├── .gitignore                                    <── Ignores node_modules, __pycache__, .env, dist
-├── docker-compose.yml                            <── Spins up frontend and backend locally with one command
-├── GEMINI.md                                     <── Team context & operational guidelines for AI assistants
-└── README.md                                     <── Hackathon overview & reproducible testing instructions
-
+│   ├── prd.md
+│   ├── architecture_notes.md
+│   ├── demo_flow.md
+│   └── structure.txt
+│
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── GEMINI.md
+└── README.md
 
 ======================================================================
 FILE: frontend\index.html

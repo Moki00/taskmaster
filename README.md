@@ -66,24 +66,24 @@ flowchart LR
     E -.->|checks Google Calendar,<br/>proposes/confirms a slot| E
 ```
 
-| # | Agent | Responsibility |
-|---|-------|-----------------|
-| 1 | **Intake** | Normalizes messages from every channel (including audio) into one internal schema; detects language; extracts sender name, email, phone, company; assigns `intake_id` + timestamp. |
-| 2 | **Classifier** | The core. Uses **Gemini 3.5** for deep NLU of messy, incoherent, angry, multilingual, half-finished messages. Outputs `issue_type` and `urgency` from the **active vertical's taxonomy**, extracted entities, missing critical info, a sentiment/frustration read, and a calibrated confidence score. |
-| 3 | **Ticket** | Builds the structured ticket, assigns number/priority/category/status, writes to Firestore, links customer history, routes to the right person. |
-| 4 | **Reply** | Writes the customer reply, matching their language, tone, and emotional state. Complete info → confirmation + ticket number + expected response time. Missing info → at most 3 targeted questions. Never generic. |
-| 5 | **Scheduler** | Decides if an appointment is needed, checks availability via native Google Calendar integration, proposes slots, confirms, blocks the slot, sets status to `Scheduled`. |
+| #   | Agent          | Responsibility                                                                                                                                                                                                                                                                                        |
+| --- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Intake**     | Normalizes messages from every channel (including audio) into one internal schema; detects language; extracts sender name, email, phone, company; assigns `intake_id` + timestamp.                                                                                                                    |
+| 2   | **Classifier** | The core. Uses **Gemini 3.5** for deep NLU of messy, incoherent, angry, multilingual, half-finished messages. Outputs `issue_type` and `urgency` from the **active vertical's taxonomy**, extracted entities, missing critical info, a sentiment/frustration read, and a calibrated confidence score. |
+| 3   | **Ticket**     | Builds the structured ticket, assigns number/priority/category/status, writes to Firestore, links customer history, routes to the right person.                                                                                                                                                       |
+| 4   | **Reply**      | Writes the customer reply, matching their language, tone, and emotional state. Complete info → confirmation + ticket number + expected response time. Missing info → at most 3 targeted questions. Never generic.                                                                                     |
+| 5   | **Scheduler**  | Decides if an appointment is needed, checks availability via native Google Calendar integration, proposes slots, confirms, blocks the slot, sets status to `Scheduled`.                                                                                                                               |
 
 ## Vertical-agnostic by design
 
 Four complete vertical config packs ship today in [`backend/app/verticals/packs/`](backend/app/verticals/packs):
 
-| Vertical | Flagship | "Urgent" means |
-|----------|:---:|-----------------|
-| `it_support` | ✅ demo | Business down — a whole site or multiple users can't work |
-| `dental_clinic` | | Active severe pain, swelling, or dental trauma |
-| `home_services` | | Active leak, no heat, no power, or an electrical hazard |
-| `property_management` | | No heat/AC in extreme weather, no water, gas smell, safety hazard |
+| Vertical              | Flagship | "Urgent" means                                                    |
+| --------------------- | :------: | ----------------------------------------------------------------- |
+| `it_support`          | ✅ demo  | Business down — a whole site or multiple users can't work         |
+| `dental_clinic`       |          | Active severe pain, swelling, or dental trauma                    |
+| `home_services`       |          | Active leak, no heat, no power, or an electrical hazard           |
+| `property_management` |          | No heat/AC in extreme weather, no water, gas smell, safety hazard |
 
 Each pack defines its own issue-type taxonomy, urgency definitions, required entities, appointment
 types, reply tone, business hours/timezone, SLAs by priority, and routing rules — all data, no
@@ -131,18 +131,20 @@ follows.
 taskmaster/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py, config.py           # FastAPI app + typed, fail-loud settings
-│   │   ├── core/timing.py               # per-stage timing + event bus
-│   │   ├── models/                      # the 5-agent contract (Pydantic v2)
-│   │   ├── verticals/                   # vertical config schema, loader, and packs
-│   │   └── services/                    # TicketRepository (Firestore + in-memory)
-│   ├── tests/                           # pytest, all green against InMemoryRepo
-│   ├── pyproject.toml
-│   └── src/                             # earlier single-shot MVP (superseded by app/)
-├── frontend/                            # React + Vite + Tailwind dashboard
-├── docs/                                # PRD, architecture notes, demo script
-├── GEMINI.md                            # full project context — read this first
-└── docker-compose.yml                   # run backend + frontend together
+│   │   ├── main.py, config.py            # FastAPI app + typed, fail-loud settings
+│   │   ├── core/timing.py                # per-stage timing + event bus
+│   │   ├── models/                       # the 5-agent contract (Pydantic v2)
+│   │   ├── verticals/                    # vertical config schema, loader, and packs
+│   │   ├── services/                     # TicketRepository (Firestore + in-memory)
+│   │   ├── agents/                       # 5-stage pipeline modules
+│   │   ├── channels/                     # ingestion adapters
+│   │   └── api/routes/                   # endpoints (/api/simulate, webhooks)
+│   ├── tests/                            # pytest suite (100% green against InMemoryRepo)
+│   └── pyproject.toml
+├── frontend/                             # React + Vite + Tailwind dashboard
+├── docs/                                 # PRD, architecture notes, demo script, structure
+├── GEMINI.md                             # full project context — read this first
+└── docker-compose.yml                    # run backend + frontend together
 ```
 
 ## Getting started
@@ -207,6 +209,10 @@ credentials either.
 
 ## Team
 
-Built by collaborators on this repo for the All Things Agentic Hackathon 2026. One collaborator
-owns the backend and the AI pipeline; the React/Tailwind dashboard is built by a teammate
-consuming this backend's API.
+Built for the **All Things Agentic Hackathon 2026**:
+
+- **Morgan King** – Project Lead & Technical Architect
+- **Dr. Agentic** – AI Core & Google ADK Agent Orchestration
+- **Asmae** – FastAPI Routes & Cloud Pub/Sub Ingestion
+- **Ashvin** – Frontend Visualizer & React State Management
+- **Habib Ur Rahman** – Ticket Persistence & External Integrations
