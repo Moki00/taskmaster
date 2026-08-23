@@ -1,0 +1,71 @@
+taskmaster/
+├── backend/
+│   ├── Dockerfile                                <── Container definition for Cloud Run
+│   ├── requirements.txt                          <── Python dependencies (FastAPI, ADK, GenAI SDK)
+│   ├── pyproject.toml                            <── Project build configuration & tool definitions
+│   ├── tests/
+│   │   └── test_agent.py                         <── Unit tests for tools and triage logic
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py                               <── FastAPI app instantiation & route registration
+│       ├── config.py                             <── Environment variables & API credentials
+│       ├── core/                                 <── Core application settings, logging, and security
+│       ├── verticals/                            <── Vertical-specific business logic & workflows
+│       ├── api/
+│       │   ├── __init__.py
+│       │   └── routes/
+│       │       ├── __init__.py
+│       │       ├── webhooks.py                   <── POST /webhook/pubsub (Cloud Pub/Sub push receiver)
+│       │       └── simulate.py                   <── POST /api/simulate (Frontend live testing endpoint)
+│       ├── models/
+│       │   ├── __init__.py
+│       │   ├── base.py                           <── Base Pydantic models & ORM mixins
+│       │   ├── common.py                         <── Shared data schemas & status responses
+│       │   ├── enums.py                          <── Urgency, category, and state enums
+│       │   ├── customer.py                       <── Client & contact schemas
+│       │   ├── ticket.py                         <── Support ticket data models & CRUD contracts
+│       │   ├── appointment.py                    <── Calendar booking & scheduling models
+│       │   ├── classification.py                 <── AI intent & urgency classification contracts
+│       │   ├── message.py                        <── Inbound raw communication models
+│       │   ├── reply.py                          <── Staged draft response contracts
+│       │   └── pipeline.py                       <── End-to-end triage execution trace models
+│       └── services/
+│           ├── __init__.py
+│           ├── ai/
+│           │   ├── __init__.py
+│           │   ├── triage_agent.py               <── Google ADK Agent initialization & system prompts
+│           │   └── tools.py                      <── Agent tools (create_ticket, check_schedule, stage_reply)
+│           ├── integrations/
+│           │   ├── __init__.py
+│           │   ├── pubsub.py                     <── Payload decoding & base64 parsing
+│           │   ├── gmail.py                      <── Gmail API client connector
+│           │   └── calendar.py                   <── Google Calendar availability connector
+│           └── tickets/
+│               ├── __init__.py
+│               └── ticket_manager.py             <── Ticket database CRUD operations & state
+├── frontend/
+│   ├── package.json                              <── Node dependencies (React, Vite, Lucide, Tailwind)
+│   ├── vite.config.js                            <── Vite development server configuration
+│   ├── tailwind.config.js                        <── Tailwind CSS styling configuration
+│   ├── postcss.config.js                         <── PostCSS configuration for Tailwind directives
+│   ├── index.html                                <── Root HTML entry point
+│   └── src/
+│       ├── main.jsx                              <── React DOM root mounting
+│       ├── index.css                             <── Tailwind base directives
+│       ├── App.jsx                               <── Split-screen visualizer & dashboard
+│       ├── components/
+│       │   ├── ExecutionLog.jsx                  <── Automated execution trace component
+│       │   ├── TicketSummary.jsx                 <── AI structured extraction display card
+│       │   └── ChannelSimulator.jsx              <── Client message input & trigger controls
+│       └── pages/
+│           └── Dashboard.jsx                     <── Main technician mission control view
+├── docs/
+│   ├── prd.md                                    <── Project requirements, Discord notes, user stories
+│   ├── architecture_notes.md                     <── Pub/Sub flow, GCP setup steps, and gcloud CLI commands
+│   ├── demo_flow.md                              <── Hackathon demo presentation script & testing steps
+│   └── structure.txt                             <── Repository folder hierarchy & module map
+├── .env.example                                  <── Template for GEMINI_API_KEY, GCP_PROJECT_ID, etc.
+├── .gitignore                                    <── Ignores node_modules, __pycache__, .env, dist
+├── docker-compose.yml                            <── Spins up frontend and backend locally with one command
+├── GEMINI.md                                     <── Team context & operational guidelines for AI assistants
+└── README.md                                     <── Hackathon overview & reproducible testing instructions

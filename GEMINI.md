@@ -2,8 +2,15 @@
 
 Context file for the backend / AI pipeline owner. Read this at the start of every session before touching `backend/`.
 
-Hackathon: **All Things Agentic Hackathon 2026** (Google + Devpost). Deadline: **Aug 31, 2026**.
+Hackathon: **All Things Agentic Hackathon 2026** (Google + Devpost). Deadline: **Sunday Aug 30**.
 
+## Team & Responsibilities
+
+- **Morgan King** – Project Lead & Technical Architect
+- **Dr. Agentic** – AI Core & Google ADK Agent Orchestration (`backend/src/services/ai/`)
+- **Asmae** – FastAPI Routes & Cloud Pub/Sub Ingestion (`backend/src/api/`)
+- **Ashvin** – Frontend Visualizer & React State Management (`frontend/src/`)
+- **Habib Ur Rahman** – Ticket Persistence & External Integrations (`backend/src/services/`)
 
 ## Product
 
