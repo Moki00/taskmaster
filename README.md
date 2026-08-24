@@ -151,13 +151,27 @@ taskmaster/
 
 ### Backend
 
+**macOS / Linux (Bash):**
+
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -e .
-cp .env.example .env             # fill in the required values, see below
+cp .env.example .env
 uvicorn app.main:app --reload --port 8000
+```
+
+**Windows (PowerShell):**
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+Copy-Item .env.example .env
+uvicorn app.main:app --reload --port 8000
+
 ```
 
 Health check: `GET http://localhost:8000/health`
