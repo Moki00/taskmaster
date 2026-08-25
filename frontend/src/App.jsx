@@ -70,66 +70,57 @@ export default function TaskmasterVisualizer() {
     },
   ]);
 
-  const handleSimulate = () => {
+  const handleSimulate = async () => {
     setIsProcessing(true);
     setLogs([]);
 
-    setTimeout(() => {
-      const now =
-        new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC";
-      setAnalysis({
-        timestamp: now,
-        client: clientName,
-        category:
-          inputMessage.toLowerCase().includes("switch") ||
-          inputMessage.toLowerCase().includes("network")
-            ? "Network / Infrastructure"
-            : "Workstation / OS Support",
-        urgency:
-          inputMessage.toLowerCase().includes("dead") ||
-          inputMessage.toLowerCase().includes("minutes")
-            ? "Critical / High"
-            : "Standard Priority",
-        deviceType: inputMessage.toLowerCase().includes("switch")
-          ? "Managed Switch"
-          : "Client PC / Laptop",
-        summary: inputMessage,
+    try {
+      const response = await fetch("http://localhost:8000/api/simulate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_name: clientName,
+          message: inputMessage,
+        }),
       });
 
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      setAnalysis({
+        timestamp: data.timestamp,
+        client: data.client,
+        category: data.category,
+        urgency: data.urgency,
+        deviceType: data.device_type,
+        summary: data.summary,
+      });
+
+      setLogs(
+        data.logs.map((log) => ({
+          id: Number(log.id),
+          time: log.time,
+          text: log.text,
+          status: log.status,
+        })),
+      );
+    } catch (error) {
       setLogs([
         {
           id: 1,
-          time: "15:05:01",
-          text: `Ingested payload from ${clientName}.`,
-          status: "ok",
-        },
-        {
-          id: 2,
-          time: "15:05:02",
-          text: "Gemini 3.5 Flash: JSON Schema validation passed.",
-          status: "ok",
-        },
-        {
-          id: 3,
-          time: "15:05:03",
-          text: "Ticket #1043 appended to dispatch queue.",
-          status: "ok",
-        },
-        {
-          id: 4,
-          time: "15:05:04",
-          text: "Autonomous calendar lock verified with Google Workspace.",
-          status: "ok",
-        },
-        {
-          id: 5,
-          time: "15:05:05",
-          text: "Auto-acknowledgment sent via Twilio / SendGrid.",
-          status: "ok",
+          time: new Date().toLocaleTimeString(),
+          text: `Request failed: ${error.message}`,
+          status: "error",
         },
       ]);
+    } finally {
       setIsProcessing(false);
-    }, 1000);
+    }
   };
 
   return (
