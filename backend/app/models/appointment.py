@@ -1,7 +1,7 @@
 """The output of the Scheduler Agent."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import Field, model_validator
 
@@ -23,9 +23,11 @@ class TimeSlot(TaskmasterModel):
 class Appointment(TaskmasterModel):
     appointment_id: str
     ticket_number: str
+    vertical: str
     appointment_type: str
     assignee: str | None = None
     proposed_slots: list[TimeSlot] = Field(default_factory=list)
     confirmed_slot: TimeSlot | None = None
     calendar_event_id: str | None = None
     status: AppointmentStatus
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -16,6 +16,8 @@ class TicketHistoryEntry(TaskmasterModel):
     actor: str
     action: str
     notes: str | None = None
+    agent_name: str | None = None
+    correlation_id: str | None = None
 
 
 class Ticket(TaskmasterModel):
@@ -33,6 +35,8 @@ class Ticket(TaskmasterModel):
     sentiment: Sentiment
     confidence: float = Field(ge=0.0, le=1.0)
     assigned_to: str | None = None
+    is_repeat_issue: bool = False
+    related_ticket_numbers: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     history: list[TicketHistoryEntry] = Field(default_factory=list)
@@ -53,7 +57,7 @@ class TicketDraft(TaskmasterModel):
     customer: Sender
     issue_type: str
     priority: Urgency
-    status: TicketStatus = TicketStatus.NEW
+    status: TicketStatus = TicketStatus.OPEN
     title: str
     description: str
     extracted_details: dict[str, Any] = Field(default_factory=dict)

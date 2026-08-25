@@ -61,7 +61,7 @@ def sample_ticket() -> Ticket:
         customer=Sender(name="Jane Doe", email="jane@example.com"),
         issue_type="hardware_failure",
         priority=Urgency.HIGH,
-        status=TicketStatus.NEW,
+        status=TicketStatus.OPEN,
         title="Printer unresponsive on 3rd floor",
         description="The printer on the 3rd floor won't turn on.",
         extracted_details={"device": "printer", "floor": 3},
@@ -87,6 +87,7 @@ def sample_appointment() -> Appointment:
     return Appointment(
         appointment_id="appt-1",
         ticket_number="TCK-0001",
+        vertical="it_support",
         appointment_type="on_site_repair",
         assignee="tech-42",
         proposed_slots=[TimeSlot(start=start, end=end)],
