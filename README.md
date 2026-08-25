@@ -1,16 +1,16 @@
-# Taskmaster
+# Go-Taskmaster
 
-**Turn messy, unstructured customer messages into clean, actionable tickets and booked appointments — in under 30 seconds, with no human in the loop for standard requests.**
+**Turn unstructured customer messages into actionable tickets and booked appointments in under 30 seconds for standard requests.**
 
-Built for the **All Things Agentic Hackathon 2026** (Google + Devpost) — deadline **Aug 31, 2026**.
+Built for the **All Things Agentic Hackathon 2026** (Google + Devpost) — deadline **Sunday Aug 30th**.
 
 ---
 
 ## Table of contents
 
-- [What is Taskmaster](#what-is-taskmaster)
+- [What is Go-Taskmaster](#what-is-go-taskmaster)
 - [Why it matters](#why-it-matters)
-- [Architecture — the 5-agent pipeline](#architecture--the-5-agent-pipeline)
+- [Architecture of the 5-agent pipeline](#architecture-of-the-5-agent-pipeline)
 - [Vertical-agnostic by design](#vertical-agnostic-by-design)
 - [Channels](#channels)
 - [Tech stack](#tech-stack)
@@ -27,28 +27,26 @@ Built for the **All Things Agentic Hackathon 2026** (Google + Devpost) — deadl
 
 ---
 
-## What is Taskmaster
+## What is Go-Taskmaster
 
-Taskmaster is an autonomous multi-agent system that reads an inbound customer message — email,
+Go-Taskmaster is an autonomous multi-agent system that reads an inbound customer message — email,
 SMS, a web form, Slack, or a spoken voice message — and turns it into a structured support ticket
 (and a booked appointment, when one is needed) without a human touching it for standard requests.
 
 **IT support / MSPs is the flagship vertical and the demo**, but the architecture is
-vertical-agnostic by design. The same pipeline can serve dental clinics, plumbing and home
-services, auto repair shops, salons, property managers, law firms — any business that receives a
-high volume of inbound requests and books appointments. What changes per vertical is
-**configuration** (taxonomy, urgency rules, tone, appointment types) — **never code**. Adding a new
-vertical is a config file, not an engineering task — see [`app/verticals/`](backend/app/verticals).
+vertical-agnostic by design. The same pipeline can serve dental clinics, home
+services, auto repair shops, salons, property managers, law firms... any business that receives a
+high volume of inbound requests and books appointments. **Configuration** change per vertical: taxonomy, urgency rules, tone, appointment types. Adding a new vertical is a config file, not an engineering task — see [`app/verticals/`](backend/app/verticals).
 
 ## Why it matters
 
-Taskmaster isn't "ticket automation." It's the difference between a customer waiting four hours
+Go-Taskmaster isn't "ticket automation." It's the difference between a customer waiting four hours
 for any sign of life, and that same customer getting an intelligent, specific, empathetic reply in
 under 30 seconds.
 
 **Latency and empathy are the product.** Anything that adds seconds or reads like a robot is a bug.
 
-## Architecture — the 5-agent pipeline
+## Architecture of the 5-agent pipeline
 
 Each agent normalizes, enriches, and passes state to the next.
 
@@ -59,11 +57,11 @@ flowchart LR
     C --> D[✉️ Reply Agent]
     D --> E[📅 Scheduler Agent]
 
-    A -.->|normalizes every channel<br/>incl. audio, into one schema| A
+    A -.->|normalizes every channel<br/>audio, into one schema| A
     B -.->|Gemini 3.5 NLU vs. the<br/>active vertical's taxonomy| B
     C -.->|writes to Firestore,<br/>links customer history| C
     D -.->|tone/language-matched<br/>reply, ≤3 questions| D
-    E -.->|checks Google Calendar,<br/>proposes/confirms a slot| E
+    E -.->|checks Google Calendar,<br/>confirms a slot| E
 ```
 
 | #   | Agent          | Responsibility                                                                                                                                                                                                                                                                                        |

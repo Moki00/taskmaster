@@ -1,3 +1,12 @@
 {
-  "python-envs.defaultEnvManager": "ms-python.python:system"
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "cSpell.words": [
+    "Agentic",
+    "Ashvin",
+    "Asmae",
+    "Devpost",
+    "Habib",
+    "Hackathon",
+    "Rahman"
+  ]
 }
