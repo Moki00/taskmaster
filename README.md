@@ -228,3 +228,4 @@ Built for the **All Things Agentic Hackathon 2026**:
 - **Asmae** – FastAPI Routes & Cloud Pub/Sub Ingestion
 - **Ashvin** – Frontend Visualizer & React State Management
 - **Habib Ur Rahman** – Ticket Persistence & External Integrations
+- **Michael Pereira** – QA, Test Engineering & Reliability
