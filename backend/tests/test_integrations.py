@@ -403,22 +403,28 @@ async def test_twilio_client_fetch_recording_audio_downloads_mp3_with_auth(
     monkeypatch: pytest.MonkeyPatch,
 ):
     _configure_twilio_env(monkeypatch)
-    client = TwilioClient()
-    client._client.recordings.return_value.fetch_async = AsyncMock(
-        return_value=SimpleNamespace(
-            uri="/2010-04-01/Accounts/ACffffffffffffffffffffffffffffffff/Recordings/RE123.json"
+    # `recordings` is a read-only property on the real twilio.rest.Client (no setter, and
+    # recordings(sid) returns a fresh context per call), so the Client itself must be mocked -
+    # setting .recordings on a real instance isn't possible.
+    with patch("app.integrations.twilio_client.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        client = TwilioClient()
+        mock_client.recordings.return_value.fetch_async = AsyncMock(
+            return_value=SimpleNamespace(
+                uri="/2010-04-01/Accounts/ACffffffffffffffffffffffffffffffff/Recordings/RE123.json"
+            )
         )
-    )
 
-    response = MagicMock(content=b"audio-bytes")
-    http_client = MagicMock()
-    http_client.get = AsyncMock(return_value=response)
-    async_client = MagicMock()
-    async_client.__aenter__ = AsyncMock(return_value=http_client)
-    async_client.__aexit__ = AsyncMock(return_value=None)
+        response = MagicMock(content=b"audio-bytes")
+        http_client = MagicMock()
+        http_client.get = AsyncMock(return_value=response)
+        async_client = MagicMock()
+        async_client.__aenter__ = AsyncMock(return_value=http_client)
+        async_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("app.integrations.twilio_client.httpx.AsyncClient", return_value=async_client):
-        result = await client.fetch_recording_audio(recording_sid="RE123")
+        with patch("app.integrations.twilio_client.httpx.AsyncClient", return_value=async_client):
+            result = await client.fetch_recording_audio(recording_sid="RE123")
 
     assert result == b"audio-bytes"
     response.raise_for_status.assert_called_once_with()

@@ -72,23 +72,36 @@ class GmailClient:
 
     async def list_history(self, *, start_history_id: str, correlation_id: str | None = None) -> list[str]:
         """Returns message ids added since start_history_id, per Gmail's history.list API - the
-        mechanism Pub/Sub push notifications point at.
+        mechanism Pub/Sub push notifications point at. Follows nextPageToken until exhausted -
+        a quiet period with several accumulated changes would otherwise silently lose messages
+        past the first page.
         """
-
-        def _do_list() -> dict:
-            return self._service.users().history().list(userId="me", startHistoryId=start_history_id).execute()
+        message_ids: list[str] = []
+        page_token: str | None = None
 
         async with timed_stage("gmail.list_history", correlation_id=correlation_id):
-            response = await call_with_retry(
-                lambda: asyncio.to_thread(_do_list),
-                operation="gmail.list_history",
-                retryable_exceptions=(HttpError, OSError),
-            )
+            while True:
+                kwargs = {"userId": "me", "startHistoryId": start_history_id}
+                if page_token is not None:
+                    kwargs["pageToken"] = page_token
 
-        message_ids: list[str] = []
-        for record in response.get("history", []):
-            for added in record.get("messagesAdded", []):
-                message_ids.append(added["message"]["id"])
+                def _do_list(kwargs=kwargs) -> dict:
+                    return self._service.users().history().list(**kwargs).execute()
+
+                response = await call_with_retry(
+                    lambda: asyncio.to_thread(_do_list),
+                    operation="gmail.list_history",
+                    retryable_exceptions=(HttpError, OSError),
+                )
+
+                for record in response.get("history", []):
+                    for added in record.get("messagesAdded", []):
+                        message_ids.append(added["message"]["id"])
+
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+
         return message_ids
 
 

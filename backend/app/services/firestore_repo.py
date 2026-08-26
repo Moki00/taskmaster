@@ -305,11 +305,14 @@ class FirestoreRepo:
             query = query.start_after({"created_at": cursor_created_at.isoformat(), "ticket_number": cursor_ticket_number})
 
         if not search:
-            docs = [Ticket.model_validate(d.to_dict()) async for d in query.limit(limit).stream()]
+            # Over-fetch by one so "is there a next page" is a fact, not a guess: a page that
+            # happens to land exactly on `limit` items total must not claim a next page exists.
+            docs = [Ticket.model_validate(d.to_dict()) async for d in query.limit(limit + 1).stream()]
+            items = docs[:limit]
             next_cursor = (
-                encode_cursor(docs[-1].created_at, docs[-1].ticket_number) if len(docs) == limit else None
+                encode_cursor(items[-1].created_at, items[-1].ticket_number) if len(docs) > limit else None
             )
-            return TicketPage(items=docs, next_cursor=next_cursor)
+            return TicketPage(items=items, next_cursor=next_cursor)
 
         # Firestore has no native full-text search. Scan a bounded window and filter client-side.
         # The cursor always advances to the last SCANNED doc (not the last MATCHED one), so paging
