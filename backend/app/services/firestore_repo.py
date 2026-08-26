@@ -7,22 +7,32 @@ time if these are missing; this is the reference list for firestore.indexes.json
     tickets: (vertical ASC, status ASC, created_at DESC, ticket_number DESC)
     tickets: (vertical ASC, priority ASC, created_at DESC, ticket_number DESC)
     tickets: (vertical ASC, issue_type ASC, created_at DESC, ticket_number DESC)
+    tickets: (vertical ASC, customer.email ASC, issue_type ASC, created_at ASC)   -- repeat-contact lookup
+    tickets: (vertical ASC, customer.phone ASC, issue_type ASC, created_at ASC)   -- repeat-contact lookup
     -- combining two or more optional filters at once (e.g. status + priority) needs one more
     -- composite index per combination in use; add as Firestore's error links prompt.
     -- `search` is filtered client-side (Firestore has no native full-text search), so it needs no
     -- index of its own.
+    appointments: (vertical ASC, ticket_number ASC, created_at ASC)               -- list_appointments_for_ticket
+    appointments: (vertical ASC, confirmed_slot.start ASC)                        -- list_appointments base query
+    appointments: (vertical ASC, status ASC, confirmed_slot.start ASC)            -- list_appointments + status
+    -- `processed_messages` (idempotency) is looked up by document id only, so it needs no index.
 
 Collections (all prefixed by settings.FIRESTORE_COLLECTION_PREFIX): "{prefix}_tickets",
-"{prefix}_customers", "{prefix}_pipeline_runs", "{prefix}_counters".
+"{prefix}_customers", "{prefix}_pipeline_runs", "{prefix}_counters", "{prefix}_appointments",
+"{prefix}_processed_messages".
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 
 from app.config import settings
 from app.models import (
+    Appointment,
+    AppointmentStatus,
     Customer,
     PipelineState,
     Sender,
@@ -32,7 +42,15 @@ from app.models import (
     TicketStatus,
     Urgency,
 )
-from app.services.repository import TicketNotFoundError, TicketPage, decode_cursor, encode_cursor
+from app.services.repository import (
+    REPEAT_CONTACT_LOOKBACK_LIMIT,
+    REPEAT_CONTACT_WINDOW_DAYS,
+    TicketNotFoundError,
+    TicketPage,
+    decode_cursor,
+    encode_cursor,
+    validate_status_transition,
+)
 
 MAX_SEARCH_SCAN = 500
 
@@ -62,6 +80,12 @@ class FirestoreRepo:
 
     def _counters_col(self):
         return self._db.collection(f"{self._prefix}_counters")
+
+    def _appointments_col(self):
+        return self._db.collection(f"{self._prefix}_appointments")
+
+    def _processed_messages_col(self):
+        return self._db.collection(f"{self._prefix}_processed_messages")
 
     @staticmethod
     def _ticket_doc_id(vertical: str, ticket_number: str) -> str:
@@ -116,9 +140,35 @@ class FirestoreRepo:
             merge=True,
         )
 
+    async def _find_repeat_contacts(
+        self, vertical: str, customer: Sender, issue_type: str, now: datetime
+    ) -> list[str]:
+        key = _customer_key(customer.email, customer.phone)
+        if key is None:
+            return []
+        field, value = ("customer.email", key) if customer.email else ("customer.phone", key)
+        cutoff = now - timedelta(days=REPEAT_CONTACT_WINDOW_DAYS)
+        query = (
+            self._tickets_col()
+            .where("vertical", "==", vertical)
+            .where(field, "==", value)
+            .where("issue_type", "==", issue_type)
+            .where("created_at", ">=", cutoff.isoformat())
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(REPEAT_CONTACT_LOOKBACK_LIMIT)
+        )
+        return [d.to_dict()["ticket_number"] async for d in query.stream()]
+
     async def create_ticket(self, draft: TicketDraft) -> Ticket:
         ticket_number = await self._next_ticket_number(draft.vertical)
         now = datetime.now(timezone.utc)
+        related = await self._find_repeat_contacts(draft.vertical, draft.customer, draft.issue_type, now)
+        is_repeat = bool(related)
+        creation_notes = (
+            f"Repeat contact: same issue_type within {REPEAT_CONTACT_WINDOW_DAYS} days as {', '.join(related)}"
+            if is_repeat
+            else None
+        )
         ticket = Ticket(
             ticket_number=ticket_number,
             intake_id=draft.intake_id,
@@ -134,9 +184,13 @@ class FirestoreRepo:
             sentiment=draft.sentiment,
             confidence=draft.confidence,
             assigned_to=draft.assigned_to,
+            is_repeat_issue=is_repeat,
+            related_ticket_numbers=related,
             created_at=now,
             updated_at=now,
-            history=[TicketHistoryEntry(actor="system", action="ticket_created", timestamp=now)],
+            history=[
+                TicketHistoryEntry(actor="system", action="ticket_created", timestamp=now, notes=creation_notes)
+            ],
         )
         doc_ref = self._tickets_col().document(self._ticket_doc_id(draft.vertical, ticket_number))
         await doc_ref.set(ticket.model_dump(mode="json"))
@@ -175,6 +229,8 @@ class FirestoreRepo:
             if snapshot is None or not snapshot.exists:
                 raise TicketNotFoundError(vertical, ticket_number)
             ticket = Ticket.model_validate(snapshot.to_dict())
+            if new_status is not None:
+                validate_status_transition(ticket.status, new_status)
             updates: dict = {
                 "history": [*ticket.history, entry],
                 "updated_at": datetime.now(timezone.utc),
@@ -195,8 +251,16 @@ class FirestoreRepo:
         status: TicketStatus,
         actor: str,
         notes: str | None = None,
+        agent_name: str | None = None,
+        correlation_id: str | None = None,
     ) -> Ticket:
-        entry = TicketHistoryEntry(actor=actor, action=f"status_changed_to_{status.value}", notes=notes)
+        entry = TicketHistoryEntry(
+            actor=actor,
+            action=f"status_changed_to_{status.value}",
+            notes=notes,
+            agent_name=agent_name,
+            correlation_id=correlation_id,
+        )
         return await self._mutate_ticket(ticket_number, vertical=vertical, entry=entry, new_status=status)
 
     async def append_ticket_event(
@@ -241,11 +305,14 @@ class FirestoreRepo:
             query = query.start_after({"created_at": cursor_created_at.isoformat(), "ticket_number": cursor_ticket_number})
 
         if not search:
-            docs = [Ticket.model_validate(d.to_dict()) async for d in query.limit(limit).stream()]
+            # Over-fetch by one so "is there a next page" is a fact, not a guess: a page that
+            # happens to land exactly on `limit` items total must not claim a next page exists.
+            docs = [Ticket.model_validate(d.to_dict()) async for d in query.limit(limit + 1).stream()]
+            items = docs[:limit]
             next_cursor = (
-                encode_cursor(docs[-1].created_at, docs[-1].ticket_number) if len(docs) == limit else None
+                encode_cursor(items[-1].created_at, items[-1].ticket_number) if len(docs) > limit else None
             )
-            return TicketPage(items=docs, next_cursor=next_cursor)
+            return TicketPage(items=items, next_cursor=next_cursor)
 
         # Firestore has no native full-text search. Scan a bounded window and filter client-side.
         # The cursor always advances to the last SCANNED doc (not the last MATCHED one), so paging
@@ -304,3 +371,65 @@ class FirestoreRepo:
         payload["vertical"] = state.message.vertical
         await self._pipeline_runs_col().document(doc_id).set(payload)
         return doc_id
+
+    async def save_appointment(self, appointment: Appointment) -> str:
+        # Pure write. Does not also update the linked ticket's status to SCHEDULED - that's the
+        # Scheduler Agent's job via update_ticket_status, kept separate so this stays predictable.
+        doc_id = f"{appointment.vertical}__{appointment.appointment_id}"
+        await self._appointments_col().document(doc_id).set(appointment.model_dump(mode="json"))
+        return appointment.appointment_id
+
+    async def get_appointment(self, appointment_id: str, *, vertical: str) -> Appointment | None:
+        doc_id = f"{vertical}__{appointment_id}"
+        snapshot = await self._appointments_col().document(doc_id).get()
+        if not snapshot.exists:
+            return None
+        return Appointment.model_validate(snapshot.to_dict())
+
+    async def list_appointments_for_ticket(self, ticket_number: str, *, vertical: str) -> list[Appointment]:
+        query = (
+            self._appointments_col()
+            .where("vertical", "==", vertical)
+            .where("ticket_number", "==", ticket_number)
+            .order_by("created_at")
+        )
+        return [Appointment.model_validate(d.to_dict()) async for d in query.stream()]
+
+    async def list_appointments(
+        self,
+        vertical: str,
+        *,
+        from_date: datetime,
+        to_date: datetime,
+        status: AppointmentStatus | None = None,
+    ) -> list[Appointment]:
+        # confirmed_slot.start is the only field we can range-filter Firestore-side; appointments
+        # with no confirmed_slot (still only proposed) never match a date range and are excluded.
+        query = (
+            self._appointments_col()
+            .where("vertical", "==", vertical)
+            .where("confirmed_slot.start", ">=", from_date.isoformat())
+            .where("confirmed_slot.start", "<=", to_date.isoformat())
+        )
+        if status is not None:
+            query = query.where("status", "==", status.value)
+        query = query.order_by("confirmed_slot.start")
+        return [Appointment.model_validate(d.to_dict()) async for d in query.stream()]
+
+    async def check_and_mark(self, provider_message_id: str, *, vertical: str) -> bool:
+        """True the first time this provider_message_id is seen (proceed), False on every repeat
+        (duplicate delivery - skip). Atomic via Firestore's server-side create-if-absent: .create()
+        fails with AlreadyExists if the doc already exists, so no transaction is needed here.
+        """
+        doc_ref = self._processed_messages_col().document(provider_message_id)
+        try:
+            await doc_ref.create(
+                {
+                    "provider_message_id": provider_message_id,
+                    "vertical": vertical,
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            return True
+        except AlreadyExists:
+            return False

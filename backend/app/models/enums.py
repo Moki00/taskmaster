@@ -24,13 +24,17 @@ class Urgency(str, Enum):
 
 
 class TicketStatus(str, Enum):
-    NEW = "NEW"
+    """The valid lifecycle is enforced in app/services/repository.py::validate_status_transition:
+    OPEN -> IN_PROGRESS -> SCHEDULED -> RESOLVED -> CLOSED (forward-or-stay, skipping ahead is
+    fine, never backward), with NEEDS_REVIEW reachable from and to every other state.
+    """
+
     OPEN = "OPEN"
-    SCHEDULED = "SCHEDULED"
     IN_PROGRESS = "IN_PROGRESS"
-    WAITING_ON_CUSTOMER = "WAITING_ON_CUSTOMER"
+    SCHEDULED = "SCHEDULED"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
 class Sentiment(str, Enum):

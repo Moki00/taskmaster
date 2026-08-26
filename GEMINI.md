@@ -10,7 +10,7 @@ Hackathon: **All Things Agentic Hackathon 2026** (Google + Devpost). Deadline: *
 - **Dr. Agentic** – AI Core & Google ADK Agent Orchestration (`backend/src/services/ai/`)
 - **Asmae** – FastAPI Routes & Cloud Pub/Sub Ingestion (`backend/src/api/`)
 - **Ashvin** – Frontend Visualizer & React State Management (`frontend/src/`)
-- **Habib Ur Rahman** – Ticket Persistence & External Integrations (`backend/src/services/`)
+- **Habib Ur Rahman** – Ticket Persistence & External Integrations (`backend/app/services/`, `backend/app/integrations/`) — done
 
 ## Product
 
@@ -82,10 +82,10 @@ backend/
 │   ├── main.py                          # FastAPI app instantiation & route registration
 │   ├── config.py                        # pydantic-settings: env vars, credentials, no literals elsewhere
 │   │
-│   ├── core/                            # cross-cutting infra, no business logic
-│   │   ├── timing.py                    # timed_stage async context manager + in-memory event bus (built)
-│   │   ├── retry.py                     # timeout + retry decorator/wrapper for all external calls
-│   │   └── errors.py                    # shared exception types
+│   ├── core/                            # cross-cutting infra, no business logic (built)
+│   │   ├── timing.py                    # timed_stage async context manager + in-memory event bus
+│   │   ├── retry.py                     # call_with_retry: timeout + retry + structured logging for every external call
+│   │   └── errors.py                    # IntegrationError/IntegrationTimeoutError/IntegrationUnavailableError/ConfigurationError
 │   │
 │   ├── models/                          # Pydantic v2 models — the contract between all 5 agents (built)
 │   │   ├── base.py                      # TaskmasterModel: shared config (extra="forbid", etc.)
@@ -98,8 +98,8 @@ backend/
 │   │   ├── appointment.py               # Appointment, TimeSlot
 │   │   └── pipeline.py                  # PipelineState, StageTiming, PipelineEvent, PipelineErrorEntry
 │   │
-│   ├── verticals/                       # THE config layer — "add a vertical" happens only here
-│   │   ├── models.py                    # VerticalConfig pydantic schema (taxonomy, urgency rules, tone, appointment types)
+│   ├── verticals/                       # THE config layer — "add a vertical" happens only here (built)
+│   │   ├── base.py                      # VerticalConfig pydantic schema (taxonomy, urgency rules, tone, appointment types)
 │   │   ├── loader.py                    # loads/validates a vertical config pack by name
 │   │   └── packs/
 │   │       ├── it_support.yaml          # flagship/demo vertical
@@ -123,12 +123,14 @@ backend/
 │   │   ├── slack.py
 │   │   └── voice_twilio.py              # audio ingestion -> Gemini audio understanding
 │   │
-│   ├── integrations/                    # thin clients for external services, all async, timeout+retry
+│   ├── integrations/                    # thin clients for external services, all async, timeout+retry (built)
 │   │   ├── gemini_client.py             # wraps Gemini 3.5 calls, enforces structured JSON output
-│   │   ├── firestore_client.py
-│   │   ├── calendar_client.py
-│   │   ├── gmail_client.py
-│   │   └── twilio_client.py
+│   │   ├── google_auth.py               # shared OAuth-from-refresh-token credentials for Gmail + Calendar
+│   │   ├── calendar_client.py           # freebusy availability + event creation
+│   │   ├── gmail_client.py              # send + Pub/Sub-history-driven read
+│   │   └── twilio_client.py             # SMS, outbound voice, recording download
+│   │   # no firestore_client.py: services/firestore_repo.py already owns all Firestore access -
+│   │   # a wrapper here would just wrap the wrapper.
 │   │
 │   ├── services/                        # persistence layer (built)
 │   │   ├── repository.py                # TicketRepository interface, get_repository(), TicketPage, errors
