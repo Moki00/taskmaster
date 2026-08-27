@@ -74,7 +74,7 @@ export default function TaskmasterVisualizer() {
     setLogs([]);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/simulate`, {
+      const response = await fetch(`${API_BASE_URL}/api/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
