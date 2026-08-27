@@ -51,7 +51,17 @@ def test_simulate_endpoint_smoke_contract():
     assert response.status_code == 200
     payload = response.json()
 
-    expected_keys = {"timestamp", "client", "category", "urgency", "device_type", "summary", "ticket_number", "logs"}
+    expected_keys = {
+        "timestamp",
+        "client",
+        "category",
+        "urgency",
+        "device_type",
+        "summary",
+        "ticket_number",
+        "draft_reply",
+        "logs",
+    }
     assert expected_keys.issubset(payload)
     assert payload["client"] == "Alice Smith"
     assert payload["category"] == "Network"
@@ -59,6 +69,9 @@ def test_simulate_endpoint_smoke_contract():
     assert payload["device_type"] == "Network / Gateway"
     assert payload["summary"] == "Our network switch is down and the office is in an outage."
     assert payload["ticket_number"].startswith("TK-")
+    assert isinstance(payload["draft_reply"], str) and payload["draft_reply"]
+    assert payload["ticket_number"] in payload["draft_reply"]
+    assert Urgency.CRITICAL.value.lower() in payload["draft_reply"].lower()
     assert isinstance(payload["logs"], list) and len(payload["logs"]) >= 4
     assert all({"id", "time", "text", "status"}.issubset(log) for log in payload["logs"])
     assert all(log["status"] == "ok" for log in payload["logs"])
