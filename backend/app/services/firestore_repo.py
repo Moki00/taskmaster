@@ -107,7 +107,8 @@ class FirestoreRepo:
 
         @firestore.async_transactional
         async def _increment(transaction: firestore.AsyncTransaction) -> int:
-            snapshot = await transaction.get(counter_ref)
+            docs = [d async for d in transaction.get(counter_ref)]
+            snapshot = docs[0] if docs else None
             current = snapshot.get("value") if snapshot is not None and snapshot.exists else 0
             next_value = current + 1
             transaction.set(counter_ref, {"value": next_value})
