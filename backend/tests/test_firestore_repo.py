@@ -73,6 +73,37 @@ async def test_firestore_get_ticket_deserializes_existing_document():
     collection.document.assert_called_once_with("it_support__TK-0001")
 
 
+async def test_firestore_update_ticket_status_uses_vertical_scoped_document_id():
+    """Ticket mutations read and write the vertical-scoped Firestore document."""
+    repo = object.__new__(FirestoreRepo)
+    existing = make_ticket("TK-0001", datetime(2026, 8, 25, 10, 0, tzinfo=timezone.utc))
+
+    document = MagicMock()
+    collection = MagicMock()
+    collection.document.return_value = document
+    repo._tickets_col = MagicMock(return_value=collection)
+
+    transaction = MagicMock()
+    transaction.get.return_value = _async_iter([FakeDocumentSnapshot(existing)])
+    transaction._begin = AsyncMock()
+    transaction._commit = AsyncMock()
+    transaction._rollback = AsyncMock()
+    repo._db = MagicMock()
+    repo._db.transaction.return_value = transaction
+
+    updated = await repo.update_ticket_status(
+        "TK-0001",
+        vertical="it_support",
+        status=TicketStatus.IN_PROGRESS,
+        actor="tech-1",
+    )
+
+    assert updated.status == TicketStatus.IN_PROGRESS
+    collection.document.assert_called_once_with("it_support__TK-0001")
+    transaction.get.assert_called_once_with(document)
+    assert transaction.set.call_args.args[0] is document
+
+
 async def test_firestore_list_tickets_exact_final_page_has_no_cursor():
     """A final page exactly at the limit must not advertise an empty next page."""
     repo = object.__new__(FirestoreRepo)
