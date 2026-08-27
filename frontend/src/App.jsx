@@ -3,6 +3,7 @@ import { Cpu } from "lucide-react";
 import ChannelSimulator from "./components/ChannelSimulator";
 import ExecutionLog from "./components/ExecutionLog";
 import TicketSummary from "./components/TicketSummary";
+import TurtleShellIcon from "./components/TurtleShellIcon";
 
 const PRESET_MESSAGES = [
   "Our main switch is down and the office network is completely dead! We have clients arriving in 20 minutes!",
@@ -118,7 +119,7 @@ export default function TaskmasterVisualizer() {
       <header className="flex items-center justify-between pb-6 border-b border-slate-800 mb-8">
         <div className="flex items-center space-x-4">
           <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <Cpu className="w-7 h-7" />
+            <TurtleShellIcon />
           </div>
           <div>
             <div className="flex items-center space-x-3">
