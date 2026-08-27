@@ -93,6 +93,8 @@ export default function TaskmasterVisualizer() {
         urgency: data.urgency,
         deviceType: data.device_type,
         summary: data.summary,
+        ticketNumber: data.ticket_number,
+        draftReply: data.draft_reply,
       });
       setLogs(data.logs.map((log) => ({ ...log, id: Number(log.id) })));
     } catch (error) {

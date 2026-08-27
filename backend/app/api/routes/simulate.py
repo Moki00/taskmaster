@@ -34,6 +34,7 @@ class SimulationResponse(BaseModel):
     device_type: str
     summary: str
     ticket_number: str
+    draft_reply: str = Field(default="Thank you for your report. We are looking into the issue and will update you shortly.")
     logs: list[dict[str, str]]
 
 
@@ -118,6 +119,12 @@ async def run_simulation(payload: SimulationRequest) -> SimulationResponse:
         "status": "ok",
     })
 
+    draft_reply_text = (
+        f"Hi {payload.client_name}, we received your request regarding '{payload.message[:45]}...' "
+        f"and opened Ticket #{ticket.ticket_number}. Priority has been set to {urgency.value.upper()} "
+        f"and assigned to {ticket.assigned_to}. A technician has been notified."
+    )
+    
     return SimulationResponse(
         timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         client=payload.client_name,
@@ -127,4 +134,5 @@ async def run_simulation(payload: SimulationRequest) -> SimulationResponse:
         summary=payload.message,
         ticket_number=ticket.ticket_number,
         logs=logs,
+        draft_reply=draft_reply_text
     )
