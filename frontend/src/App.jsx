@@ -58,6 +58,10 @@ const INITIAL_LOGS = [
   },
 ];
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://taskmaster-backend-735344105233.us-east1.run.app";
+
 export default function TaskmasterVisualizer() {
   const [inputMessage, setInputMessage] = useState(PRESET_MESSAGES[0]);
   const [clientName, setClientName] = useState("Alice Smith");
@@ -70,7 +74,7 @@ export default function TaskmasterVisualizer() {
     setLogs([]);
 
     try {
-      const response = await fetch("http://localhost:8000/api/simulate", {
+      const response = await fetch(`${API_BASE_URL}/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
