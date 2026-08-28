@@ -80,7 +80,7 @@ export default function TicketSummary({ analysis }) {
             <MessageSquareQuote className="w-4 h-4" />
             <span>Autonomous Customer Reply Draft</span>
           </div>
-          <p className="text-sm text-slate-200 font-mono bg-slate-950/70 p-3 rounded-lg border border-emerald-500/20 leading-relaxed">
+          <p className="text-sm text-slate-200 font-mono bg-slate-950/70 p-3 rounded-lg border border-emerald-500/20">
             {analysis.draftReply}
           </p>
         </div>

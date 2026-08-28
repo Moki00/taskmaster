@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { Cpu } from "lucide-react";
+import { useState } from "react";
 import ChannelSimulator from "./components/ChannelSimulator";
 import ExecutionLog from "./components/ExecutionLog";
 import TicketSummary from "./components/TicketSummary";
@@ -18,6 +17,9 @@ const INITIAL_ANALYSIS = {
   urgency: "Critical / High",
   deviceType: "Enterprise Switch / Gateway",
   summary: "Complete local area network failure affecting office operations.",
+  ticketNumber: "TK-1042",
+  draftReply:
+    "Hi Alice, we received your emergency ticket regarding the network outage and opened Ticket #TK-1042. A senior technician has been dispatched immediately.",
 };
 
 const INITIAL_LOGS = [
@@ -36,7 +38,7 @@ const INITIAL_LOGS = [
   {
     id: 3,
     time: "15:04:16",
-    text: "Created Priority CRM Support Ticket #1042.",
+    text: "Created Priority CRM Support Ticket #TK-1042.",
     status: "ok",
   },
   {
@@ -117,10 +119,12 @@ export default function TaskmasterVisualizer() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-10 flex flex-col justify-between">
       <header className="flex items-center justify-between pb-6 border-b border-slate-800 mb-8">
-        <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <TurtleShellIcon />
+        <div className="flex items-center space-x-3.5">
+          {/* Borderless Turtle Shell Logo */}
+          <div className="flex items-center justify-center select-none">
+            <TurtleShellIcon className="w-11 h-11 text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.35)]" />
           </div>
+
           <div>
             <div className="flex items-center space-x-3">
               <h1 className="text-2xl font-bold tracking-tight text-white">
@@ -135,11 +139,13 @@ export default function TaskmasterVisualizer() {
             </p>
           </div>
         </div>
+
         <div className="hidden md:flex text-sm text-slate-400 font-mono items-center space-x-2 bg-slate-900 px-4 py-2 rounded-lg border border-slate-800">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           <span>Google GenAI SDK · Gemini 3.5 Flash</span>
         </div>
       </header>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
         <ChannelSimulator
           clientName={clientName}
