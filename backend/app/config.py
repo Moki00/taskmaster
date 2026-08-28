@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     ENV: Literal["local", "dev", "staging", "production"] = "local"
     LOG_LEVEL: str = "INFO"
 
-    # ── Gemini / Agent Platform (Gemini 3.5 Flash) ─────────────────────
+    # ── Gemini / Agent Platform ─────────────────────────────────────────
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+    GEMINI_MODEL: str = "gemini-3.7-flash"
     USE_ENTERPRISE: bool = True
     USE_VERTEXAI: bool = True
 
