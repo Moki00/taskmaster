@@ -18,8 +18,7 @@ const INITIAL_ANALYSIS = {
   deviceType: "Enterprise Switch / Gateway",
   summary: "Complete local area network failure affecting office operations.",
   ticketNumber: "TK-1042",
-  draftReply:
-    "Hi Alice, we received your emergency ticket regarding the network outage and opened Ticket #TK-1042. A senior technician has been dispatched immediately.",
+  draftReply: null, // This will be populated after the simulation runs
 };
 
 const INITIAL_LOGS = [
@@ -89,6 +88,8 @@ export default function TaskmasterVisualizer() {
       if (!response.ok) throw new Error(`API error: ${response.status}`);
 
       const data = await response.json();
+      console.log("Simulation response:", data);
+
       setAnalysis({
         timestamp: data.timestamp,
         client: data.client,
@@ -97,7 +98,7 @@ export default function TaskmasterVisualizer() {
         deviceType: data.device_type,
         summary: data.summary,
         ticketNumber: data.ticket_number,
-        draftReply: data.draft_reply,
+        draftReply: data.draft_reply || data.reply || data.client_reply || null,
       });
       setLogs(data.logs.map((log) => ({ ...log, id: Number(log.id) })));
     } catch (error) {
