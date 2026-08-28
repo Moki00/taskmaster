@@ -155,6 +155,7 @@ export default function TaskmasterVisualizer() {
           onClientNameChange={setClientName}
           onMessageChange={setInputMessage}
           onSimulate={handleSimulate}
+          draftReply={analysis.draftReply}
         />
         <div className="lg:col-span-7 flex flex-col space-y-6">
           <TicketSummary analysis={analysis} />

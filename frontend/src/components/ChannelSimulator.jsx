@@ -1,5 +1,9 @@
-import React from "react";
-import { MessageSquare, RefreshCw, Send } from "lucide-react";
+import {
+  MessageSquare,
+  MessageSquareQuote,
+  RefreshCw,
+  Send,
+} from "lucide-react";
 
 export default function ChannelSimulator({
   clientName,
@@ -9,6 +13,7 @@ export default function ChannelSimulator({
   onClientNameChange,
   onMessageChange,
   onSimulate,
+  draftReply,
 }) {
   return (
     <div className="lg:col-span-5 flex flex-col justify-between bg-slate-900/60 border border-slate-800 rounded-2xl p-7 shadow-xl">
@@ -22,6 +27,7 @@ export default function ChannelSimulator({
             Channel: Web / SMS
           </span>
         </div>
+
         <div>
           <label className="text-sm text-slate-300 block mb-2 font-medium">
             Quick Presets:
@@ -30,6 +36,7 @@ export default function ChannelSimulator({
             {presets.map((message, index) => (
               <button
                 key={index}
+                type="button"
                 onClick={() => onMessageChange(message)}
                 className="text-left text-sm bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 p-3 rounded-xl text-slate-200 transition-colors"
               >
@@ -38,6 +45,7 @@ export default function ChannelSimulator({
             ))}
           </div>
         </div>
+
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1.5">
@@ -50,6 +58,7 @@ export default function ChannelSimulator({
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-base text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
+
           <div>
             <label className="text-sm font-medium text-slate-300 block mb-1.5">
               Unstructured Issue Description
@@ -64,18 +73,45 @@ export default function ChannelSimulator({
           </div>
         </div>
       </div>
-      <button
-        onClick={onSimulate}
-        disabled={isProcessing}
-        className="w-full mt-6 py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2.5 text-base shadow-lg shadow-emerald-950/50"
-      >
-        {isProcessing ? (
-          <RefreshCw className="w-5 h-5 animate-spin" />
-        ) : (
-          <Send className="w-5 h-5" />
+
+      <div className="mt-6 space-y-4">
+        {/* Simulate Action Button */}
+        <button
+          type="button"
+          onClick={onSimulate}
+          disabled={isProcessing || !inputMessage.trim()}
+          className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2.5 text-base shadow-lg shadow-emerald-950/50"
+        >
+          {isProcessing ? (
+            <RefreshCw className="w-5 h-5 animate-spin" />
+          ) : (
+            <Send className="w-5 h-5" />
+          )}
+          <span>
+            {isProcessing
+              ? "Agent Orchestrating..."
+              : "Simulate Incoming Request"}
+          </span>
+        </button>
+
+        {/* AI Client Reply Display */}
+        {draftReply && (
+          <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2 text-emerald-400 text-xs font-semibold uppercase tracking-wider">
+                <MessageSquareQuote className="w-4 h-4" />
+                <span>AI Reply to Client</span>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-400/90 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                SMS / Email Ready
+              </span>
+            </div>
+            <p className="text-xs text-slate-200 font-mono bg-slate-950/80 p-3 rounded-lg border border-emerald-500/20 leading-relaxed">
+              {draftReply}
+            </p>
+          </div>
         )}
-        {isProcessing ? "Agent Orchestrating..." : "Simulate Incoming Request"}
-      </button>
+      </div>
     </div>
   );
 }
