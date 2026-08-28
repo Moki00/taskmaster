@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # ── Google Cloud (required) ─────────────────────────────────────────
     GCP_PROJECT_ID: str
-    GCP_REGION: str = "us-east1"
+    GCP_REGION: str = "us-central1"
     FIRESTORE_COLLECTION_PREFIX: str = "taskmaster"
 
     # ── Vertical config (required) ──────────────────────────────────────
