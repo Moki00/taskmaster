@@ -1,21 +1,17 @@
-"""Simulation endpoint for the frontend dashboard."""
+"""Simulation endpoint for the frontend dashboard - runs the real 5-agent pipeline end to end
+(Intake -> Classifier -> Ticket -> Reply -> Scheduler) against the active vertical. Response shape
+is fixed by the frontend contract (frontend/src/App.jsx's handleSimulate) - keep field names as-is.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import uuid
-from fastapi import APIRouter
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.timing import timed_stage
-from app.models import (
-    Channel,
-    NormalizedMessage,
-    Sender,
-    Sentiment,
-    TicketDraft,
-    Urgency,
-)
-from app.services.repository import get_repository
+from app.agents import pipeline
+from app.agents.intake_agent import IntakeInput
+from app.models import Channel, Sender, Urgency
 from app.verticals import get_active_vertical
 
 router = APIRouter(prefix="/api", tags=["simulation"])
@@ -34,105 +30,105 @@ class SimulationResponse(BaseModel):
     device_type: str
     summary: str
     ticket_number: str
-    draft_reply: str = Field(default="Thank you for your report. We are looking into the issue and will update you shortly.")
+    draft_reply: str
     logs: list[dict[str, str]]
+
+
+def _format_urgency(urgency: Urgency) -> str:
+    """Matches the display convention the frontend was already built against."""
+    if urgency == Urgency.CRITICAL:
+        return "Critical / High"
+    return f"{urgency.value.title()} Priority"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%H:%M:%S")
+
+
+def _build_logs(state) -> list[dict[str, str]]:
+    classification = state.classification
+    ticket = state.ticket
+
+    logs: list[dict[str, str]] = [
+        {
+            "id": "1",
+            "time": _now(),
+            "text": f"Intake Agent: Ingested message from {state.message.sender.name or 'customer'} via {state.message.channel.value}.",
+            "status": "ok",
+        },
+        {
+            "id": "2",
+            "time": _now(),
+            "text": (
+                f"Classifier Agent: Category='{classification.issue_type}', "
+                f"Urgency='{classification.urgency.value}' (confidence={classification.confidence:.0%})."
+            ),
+            "status": "ok",
+        },
+        {
+            "id": "3",
+            "time": _now(),
+            "text": f"Ticket Agent: Created Ticket #{ticket.ticket_number} (assigned to {ticket.assigned_to}).",
+            "status": "ok",
+        },
+        {
+            "id": "4",
+            "time": _now(),
+            "text": (
+                "Reply Agent: Draft response queued for client acknowledgment."
+                if state.reply is not None
+                else "Reply Agent: Failed to draft a response."
+            ),
+            "status": "ok" if state.reply is not None else "error",
+        },
+    ]
+
+    if state.appointment is not None and state.appointment.confirmed_slot is not None:
+        when = state.appointment.confirmed_slot.start.strftime("%Y-%m-%d %H:%M UTC")
+        text = f"Scheduler Agent: Appointment confirmed for {when}."
+    elif state.appointment is not None:
+        text = f"Scheduler Agent: Slots proposed for {state.appointment.appointment_type}, awaiting confirmation."
+    else:
+        text = "Scheduler Agent: No appointment required for this request."
+    logs.append({"id": "5", "time": _now(), "text": text, "status": "ok"})
+
+    for error in state.errors:
+        logs.append({"id": str(len(logs) + 1), "time": _now(), "text": f"{error.stage}: {error.message}", "status": "error"})
+
+    return logs
 
 
 @router.post("/simulate", response_model=SimulationResponse)
 async def run_simulation(payload: SimulationRequest) -> SimulationResponse:
-    repo = get_repository()
     vertical = get_active_vertical()
-    intake_id = f"intake-{uuid.uuid4().hex[:8]}"
-    logs: list[dict[str, str]] = []
 
-    # 1. Intake
-    async with timed_stage("intake_agent", correlation_id=intake_id):
-        norm_msg = NormalizedMessage(
-            intake_id=intake_id,
-            vertical=vertical.key,
-            channel=Channel.WEB_FORM,
-            sender=Sender(name=payload.client_name),
-            body_text=payload.message,
-        )
-        logs.append({
-            "id": "1",
-            "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
-            "text": f"Ingestion verified: Received payload from {payload.client_name}.",
-            "status": "ok",
-        })
-
-    # 2. Heuristic / Agent Triage against active vertical
-    async with timed_stage("classifier_agent", correlation_id=intake_id):
-        msg_lower = payload.message.lower()
-        
-        # Match issue type against vertical pack
-        issue_type = "other"
-        for it in vertical.issue_types:
-            if any(example.lower() in msg_lower for example in it.examples) or it.name in msg_lower:
-                issue_type = it.name
-                break
-        if issue_type == "other" and vertical.issue_types:
-            issue_type = vertical.issue_types[0].name
-
-        urgency = Urgency.LOW
-        if any(term in msg_lower for term in ["down", "dead", "emergency", "severe", "outage", "minutes"]):
-            urgency = Urgency.CRITICAL
-        elif any(term in msg_lower for term in ["broken", "flickering", "urgent"]):
-            urgency = Urgency.HIGH
-
-        detected_device = "Network / Gateway" if "switch" in msg_lower or "network" in msg_lower else "Workstation / Laptop"
-
-        logs.append({
-            "id": "2",
-            "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
-            "text": f"Classifier Agent: Category='{issue_type}', Urgency='{urgency.value}'.",
-            "status": "ok",
-        })
-
-    # 3. Create Ticket
-    async with timed_stage("ticket_agent", correlation_id=intake_id):
-        ticket_draft = TicketDraft(
-            intake_id=intake_id,
-            vertical=vertical.key,
-            customer=norm_msg.sender,
-            issue_type=issue_type,
-            priority=urgency,
-            title=f"{issue_type.replace('_', ' ').title()} reported by {payload.client_name}",
-            description=payload.message,
-            extracted_details={"detected_device": detected_device},
-            sentiment=Sentiment.ANNOYED if urgency in [Urgency.HIGH, Urgency.CRITICAL] else Sentiment.CALM,
-            confidence=0.92,
-            assigned_to=vertical.resolve_assignee(issue_type, urgency),
-        )
-        ticket = await repo.create_ticket(ticket_draft)
-        logs.append({
-            "id": "3",
-            "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
-            "text": f"Ticket Agent: Created CRM Ticket #{ticket.ticket_number} (Assigned to {ticket.assigned_to}).",
-            "status": "ok",
-        })
-
-    logs.append({
-        "id": "4",
-        "time": datetime.now(timezone.utc).strftime("%H:%M:%S"),
-        "text": "Reply Agent: Draft response queued for client acknowledgment.",
-        "status": "ok",
-    })
-
-    draft_reply_text = (
-        f"Hi {payload.client_name}, we received your request regarding '{payload.message[:45]}...' "
-        f"and opened Ticket #{ticket.ticket_number}. Priority has been set to {urgency.value.upper()} "
-        f"and assigned to {ticket.assigned_to}. A technician has been notified."
+    intake_input = IntakeInput(
+        channel=Channel.WEB_FORM,
+        vertical=vertical.key,
+        sender=Sender(name=payload.client_name),
+        body_text=payload.message,
     )
-    
+
+    try:
+        state = await pipeline.run(intake_input, vertical=vertical)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Pipeline failed: {exc}") from exc
+
+    classification = state.classification
+    ticket = state.ticket
+    if classification is None or ticket is None:
+        # pipeline.run() raises before returning if either stage fails, so this is unreachable in
+        # practice - guards the type checker and fails loudly instead of a confusing attribute error.
+        raise HTTPException(status_code=502, detail="Pipeline completed without a classification or ticket.")
+
     return SimulationResponse(
         timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         client=payload.client_name,
-        category=issue_type.replace("_", " ").title(),
-        urgency=f"{urgency.value.title()} Priority" if urgency != Urgency.CRITICAL else "Critical / High",
-        device_type=detected_device,
-        summary=payload.message,
+        category=classification.issue_type.replace("_", " ").title(),
+        urgency=_format_urgency(classification.urgency),
+        device_type=str(classification.extracted_details.get("device_type", "Not specified")),
+        summary=classification.summary,
         ticket_number=ticket.ticket_number,
-        logs=logs,
-        draft_reply=draft_reply_text
+        draft_reply=state.reply.body if state.reply is not None else "Draft reply unavailable - see execution log.",
+        logs=_build_logs(state),
     )
