@@ -62,7 +62,7 @@ def _from_wire(model: type[BaseModel], parsed: BaseModel) -> dict[str, Any]:
 class GeminiClient:
     def __init__(self) -> None:
         project_id = getattr(settings, "GCP_PROJECT_ID", "hackathon8-20")
-        region = getattr(settings, "GCP_REGION", "us-central1")
+        region = getattr(settings, "GCP_REGION", "global")
 
         # Handles both Google Cloud Agent Platform keys (AQ...) and standard AI Studio keys
         if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.startswith("AQ."):

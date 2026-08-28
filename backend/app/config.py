@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # ── Google Cloud (required) ─────────────────────────────────────────
     GCP_PROJECT_ID: str = "hackathon8-20"
-    GCP_REGION: str = "us-central1"
+    GCP_REGION: str = "global"
     FIRESTORE_COLLECTION_PREFIX: str = "taskmaster"
 
     # ── Vertical config (required) ──────────────────────────────────────
