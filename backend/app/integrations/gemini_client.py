@@ -62,16 +62,15 @@ def _from_wire(model: type[BaseModel], parsed: BaseModel) -> dict[str, Any]:
 class GeminiClient:
     def __init__(self) -> None:
         project_id = getattr(settings, "GCP_PROJECT_ID", "hackathon8-20")
-        region = getattr(settings, "GCP_REGION", "us-east1")
+        region = getattr(settings, "GCP_REGION", "us-central1")
 
-        # Route via Gemini Enterprise Agent Platform when configured or fallback from raw developer API key
-        use_enterprise = getattr(settings, "USE_ENTERPRISE", None) or getattr(settings, "USE_VERTEXAI", False)
-
-        if use_enterprise or not getattr(settings, "GEMINI_API_KEY", None) or settings.GEMINI_API_KEY.startswith("AQ."):
+        # Handles both Google Cloud Agent Platform keys (AQ...) and standard AI Studio keys
+        if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.startswith("AQ."):
             self._client = genai.Client(
                 vertexai=True,
                 project=project_id,
                 location=region,
+                api_key=settings.GEMINI_API_KEY,
             )
         else:
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)

@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # ── Gemini / Agent Platform ─────────────────────────────────────────
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.7-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
     USE_ENTERPRISE: bool = True
     USE_VERTEXAI: bool = True
 
