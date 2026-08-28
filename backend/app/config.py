@@ -26,12 +26,12 @@ class Settings(BaseSettings):
 
     # ── Gemini / Agent Platform (Gemini 3.5 Flash) ─────────────────────
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     USE_ENTERPRISE: bool = True
     USE_VERTEXAI: bool = True
 
     # ── Google Cloud (required) ─────────────────────────────────────────
-    GCP_PROJECT_ID: str
+    GCP_PROJECT_ID: str = "hackathon8-20"
     GCP_REGION: str = "us-central1"
     FIRESTORE_COLLECTION_PREFIX: str = "taskmaster"
 
