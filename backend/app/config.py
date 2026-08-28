@@ -24,12 +24,15 @@ class Settings(BaseSettings):
     ENV: Literal["local", "dev", "staging", "production"] = "local"
     LOG_LEVEL: str = "INFO"
 
-    # ── Gemini (required) ───────────────────────────────────────────────
-    GEMINI_API_KEY: str
+    # ── Gemini / Agent Platform (Gemini 3.5 Flash) ─────────────────────
+    GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-3.5-flash"
+    USE_ENTERPRISE: bool = True
+    USE_VERTEXAI: bool = True
 
     # ── Google Cloud (required) ─────────────────────────────────────────
     GCP_PROJECT_ID: str
+    GCP_REGION: str = "us-east1"
     FIRESTORE_COLLECTION_PREFIX: str = "taskmaster"
 
     # ── Vertical config (required) ──────────────────────────────────────

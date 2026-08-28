@@ -1,4 +1,4 @@
-"""Thin async wrapper around Gemini 3.5. Enforces structured JSON output - agents get back a
+"""Thin async wrapper around Gemini 3.5. Enforces structured JSON output, agents get back a
 validated Pydantic model, never free text to parse themselves.
 """
 from __future__ import annotations
@@ -32,18 +32,10 @@ def _needs_wire_schema(model: type[BaseModel]) -> bool:
 
 @lru_cache(maxsize=None)
 def _wire_schema(model: type[BaseModel]) -> type[BaseModel]:
-    """Gemini's Developer API (API-key auth, as opposed to Vertex AI) rejects any response_schema
-    whose JSON schema includes `additionalProperties`. Pydantic emits that both for models with
-    `extra="forbid"` (every TaskmasterModel our agents use) and, unavoidably, for any `dict[str, X]`
-    field (an open-ended object has no other way to express "any key allowed"). Returns a
-    structurally adapted, permissive twin to request the response against: forbid is dropped, and
-    each dict field becomes a `list[_KeyValue]` (Gemini can express a list of fixed-shape objects
-    fine, just not a wildcard map). generate_structured converts the pairs back to a dict and
-    re-validates into the real, strict `model` before returning, so callers never see the twin.
-
-    Cached per model class so the twin's identity is stable - both for a cheap no-op on repeat
-    calls, and so tests mocking the SDK boundary can recognize which strict model a captured
-    response_schema corresponds to.
+    """Gemini's Developer API (API-key auth) rejects any response_schema whose JSON schema
+    includes `additionalProperties`. Pydantic emits that both for models with `extra="forbid"`
+    and any `dict[str, X]` field. Returns a structurally adapted twin where forbid is dropped
+    and dicts become `list[_KeyValue]`.
     """
     if not _needs_wire_schema(model):
         return model
@@ -69,9 +61,22 @@ def _from_wire(model: type[BaseModel], parsed: BaseModel) -> dict[str, Any]:
 
 class GeminiClient:
     def __init__(self) -> None:
-        # GEMINI_API_KEY is required in Settings (fails loudly at startup if unset), never None here.
-        self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self._model = settings.GEMINI_MODEL
+        project_id = getattr(settings, "GCP_PROJECT_ID", "hackathon8-20")
+        region = getattr(settings, "GCP_REGION", "us-east1")
+
+        # Route via Gemini Enterprise Agent Platform when configured or fallback from raw developer API key
+        use_enterprise = getattr(settings, "USE_ENTERPRISE", None) or getattr(settings, "USE_VERTEXAI", False)
+
+        if use_enterprise or not getattr(settings, "GEMINI_API_KEY", None) or settings.GEMINI_API_KEY.startswith("AQ."):
+            self._client = genai.Client(
+                vertexai=True,
+                project=project_id,
+                location=region,
+            )
+        else:
+            self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+        self._model = getattr(settings, "GEMINI_MODEL", "gemini-3.5-flash")
 
     async def generate_structured(
         self,
