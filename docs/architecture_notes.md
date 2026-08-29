@@ -109,7 +109,7 @@ The ADK triage agent (`backend/src/services/ai/tools.py`) dynamically triggers t
 # Google Cloud & AI Credentials
 GEMINI_API_KEY="your_gemini_api_key"
 GCP_PROJECT_ID="hackathon8-20"
-GCP_REGION="us-east1"
+GCP_REGION="global"
 
 # Pub/Sub Configuration
 PUBSUB_TOPIC_NAME="gvoice-incoming-topic"

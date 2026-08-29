@@ -155,7 +155,15 @@ class FirestoreRepo:
             .order_by("created_at", direction=firestore.Query.DESCENDING)
             .limit(REPEAT_CONTACT_LOOKBACK_LIMIT)
         )
-        return [d.to_dict()["ticket_number"] async for d in query.stream()]
+        related: list[str] = []
+        async for d in query.stream():
+            data = d.to_dict()
+            if not data:
+                continue
+            ticket_number = data.get("ticket_number")
+            if ticket_number is not None:
+                related.append(ticket_number)
+        return related
 
     async def create_ticket(self, draft: TicketDraft) -> Ticket:
         ticket_number = await self._next_ticket_number(draft.vertical)
@@ -221,9 +229,7 @@ class FirestoreRepo:
 
         @firestore.async_transactional
         async def _apply(transaction: firestore.AsyncTransaction) -> Ticket:
-            snapshot = None
-            async for s in transaction.get(doc_ref):
-                snapshot = s
+            snapshot = await doc_ref.get(transaction=transaction)
             if snapshot is None or not snapshot.exists:
                 raise TicketNotFoundError(vertical, ticket_number)
             ticket = Ticket.model_validate(snapshot.to_dict())
@@ -353,7 +359,13 @@ class FirestoreRepo:
 
         # No customer_id FK on Ticket, so this queries tickets directly rather than joining
         # through the customers collection.
-        field, value = ("customer.email", email.strip().lower()) if email else ("customer.phone", phone.strip())
+        if email is not None:
+            field, value = ("customer.email", email.strip().lower())
+        elif phone is not None:
+            field, value = ("customer.phone", phone.strip())
+        else:
+            raise ValueError("get_customer_history requires email or phone")
+
         query = (
             self._tickets_col()
             .where("vertical", "==", vertical)
