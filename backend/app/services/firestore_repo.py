@@ -424,7 +424,14 @@ class FirestoreRepo:
         if status is not None:
             query = query.where("status", "==", status.value)
         query = query.order_by("confirmed_slot.start")
-        return [Appointment.model_validate(d.to_dict()) async for d in query.stream()]
+
+        results = []
+        async for d in query.stream():
+            data = d.to_dict()
+            if not data:
+                continue
+            results.append(Appointment.model_validate(data))
+        return results
 
     async def check_and_mark(self, provider_message_id: str, *, vertical: str) -> bool:
         """True the first time this provider_message_id is seen (proceed), False on every repeat
