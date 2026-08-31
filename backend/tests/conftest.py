@@ -12,8 +12,20 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
 from app.integrations.gemini_client import _wire_schema, get_gemini_client
 from app.models import Classification, ReplyDraft, Sentiment, Urgency
+
+
+@pytest.fixture(autouse=True)
+def _dummy_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Gemini SDK client refuses to construct with an empty api_key, but every test mocks the
+    network call at client._client.aio.models.generate_content - so tests never need a real key,
+    only a non-empty placeholder for construction to succeed. Provide one when none is configured
+    (e.g. a comment-free local .env with GEMINI_API_KEY left blank, or CI with no env at all).
+    """
+    if not settings.GEMINI_API_KEY:
+        monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-dummy-key")
 
 
 @pytest.fixture
