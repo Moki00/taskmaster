@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from app.models import Sender, Sentiment, Ticket, TicketStatus, Urgency
 from app.services.firestore_repo import FirestoreRepo
 
@@ -73,21 +75,39 @@ async def test_firestore_get_ticket_deserializes_existing_document():
     collection.document.assert_called_once_with("it_support__TK-0001")
 
 
-async def test_firestore_update_ticket_status_uses_vertical_scoped_document_id():
-    """Ticket mutations read and write the vertical-scoped Firestore document."""
+async def test_firestore_update_ticket_status_uses_vertical_scoped_document_id(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Ticket mutations read and write the vertical-scoped Firestore document.
+
+    The read uses AsyncDocumentReference.get(transaction=...), a coroutine returning a single
+    snapshot (google-cloud-firestore >= 2.x), so it's `await doc_ref.get(...)`, not an async
+    iterator. We run the @firestore.async_transactional body directly via a pass-through so the
+    test exercises _mutate_ticket's read/validate/write logic without depending on the SDK's
+    begin/commit/retry internals.
+    """
+    from app.services import firestore_repo as firestore_repo_module
+
+    def _passthrough_transactional(func):
+        async def _run(transaction, *args, **kwargs):
+            return await func(transaction, *args, **kwargs)
+
+        return _run
+
+    monkeypatch.setattr(
+        firestore_repo_module.firestore, "async_transactional", _passthrough_transactional
+    )
+
     repo = object.__new__(FirestoreRepo)
     existing = make_ticket("TK-0001", datetime(2026, 8, 25, 10, 0, tzinfo=timezone.utc))
 
     document = MagicMock()
+    document.get = AsyncMock(return_value=FakeDocumentSnapshot(existing))
     collection = MagicMock()
     collection.document.return_value = document
     repo._tickets_col = MagicMock(return_value=collection)
 
     transaction = MagicMock()
-    transaction.get.return_value = _async_iter([FakeDocumentSnapshot(existing)])
-    transaction._begin = AsyncMock()
-    transaction._commit = AsyncMock()
-    transaction._rollback = AsyncMock()
     repo._db = MagicMock()
     repo._db.transaction.return_value = transaction
 
@@ -100,7 +120,7 @@ async def test_firestore_update_ticket_status_uses_vertical_scoped_document_id()
 
     assert updated.status == TicketStatus.IN_PROGRESS
     collection.document.assert_called_once_with("it_support__TK-0001")
-    transaction.get.assert_called_once_with(document)
+    document.get.assert_awaited_once_with(transaction=transaction)
     assert transaction.set.call_args.args[0] is document
 
 
