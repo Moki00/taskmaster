@@ -1,8 +1,11 @@
 # Go-Taskmaster
 
-**Turn unstructured customer messages into actionable tickets and booked appointments in under 30 seconds for standard requests.**
+**Turn unstructured customer messages into actionable tickets and booked appointments in less than a minute.**
 
-Built for the **All Things Agentic Hackathon 2026** (Google + Devpost) — deadline **Sunday Aug 30th**.
+Built for the **All Things Agentic Hackathon 2026** (Google + Devpost).
+
+🚀 **Live Dashboard:** [https://go-taskmaster-1.web.app](https://go-taskmaster-1.web.app)  
+📹 **Demo Video:** [YouTube Video Link](https://www.youtube.com/watch?v=jsJOhPfH5vE)
 
 ---
 
@@ -10,45 +13,41 @@ Built for the **All Things Agentic Hackathon 2026** (Google + Devpost) — deadl
 
 - [What is Go-Taskmaster](#what-is-go-taskmaster)
 - [Why it matters](#why-it-matters)
-- [Architecture of the 5-agent pipeline](#architecture-of-the-5-agent-pipeline)
-- [Vertical-agnostic by design](#vertical-agnostic-by-design)
-- [Channels](#channels)
-- [Tech stack](#tech-stack)
-- [Project status](#project-status)
-- [Repository structure](#repository-structure)
-- [Getting started](#getting-started)
+- [Architecture of the 5-Agent Pipeline](#architecture-of-the-5-agent-pipeline)
+- [Vertical-Agnostic by Design](#vertical-agnostic-by-design)
+- [Tech Stack & Google Cloud Architecture](#tech-stack--google-cloud-architecture)
+- [Project Status](#project-status)
+- [Repository Structure](#repository-structure)
+- [Getting Started](#getting-started)
   - [Backend](#backend)
   - [Frontend](#frontend)
-  - [Docker Compose (both at once)](#docker-compose-both-at-once)
-- [Environment variables](#environment-variables)
-- [Running tests](#running-tests)
-- [Documentation](#documentation)
+  - [Docker Compose](#docker-compose-both-at-once)
+- [Running Tests](#running-tests)
 - [Team](#team)
 
 ---
 
 ## What is Go-Taskmaster
 
-Go-Taskmaster is an autonomous multi-agent system that reads an inbound customer message — email,
-SMS, a web form, Slack, or a spoken voice message — and turns it into a structured support ticket
-(and a booked appointment, when one is needed) without a human touching it for standard requests.
+Go-Taskmaster is an autonomous, multi-agent dispatch system that intercepts unstructured customer messages — SMS, email, web forms, and voice audio — and converts them into persistent support tickets, calendar bookings, and diagnostic reply drafts without requiring human intervention for standard requests.
 
-**IT support / MSPs is the flagship vertical and the demo**, but the architecture is
-vertical-agnostic by design. The same pipeline can serve dental clinics, home
-services, auto repair shops, salons, property managers, law firms... any business that receives a
-high volume of inbound requests and books appointments. **Configuration** change per vertical: taxonomy, urgency rules, tone, appointment types. Adding a new vertical is a config file, not an engineering task — see [`app/verticals/`](backend/app/verticals).
+**IT support / MSP operations is the flagship vertical and demo**, but the architecture is completely vertical-agnostic. The exact same pipeline serves dental clinics, home services, property management, and professional service firms through modular JSON/Pydantic taxonomy configuration packs in [`app/verticals/`](backend/app/verticals).
 
-## Why it matters
+---
 
-Go-Taskmaster isn't "ticket automation." It's the difference between a customer waiting four hours
-for any sign of life, and that same customer getting an intelligent, specific, empathetic reply in
-under 30 seconds.
+## Why It Matters
 
-**Latency and empathy are the product.** Anything that adds seconds or reads like a robot is a bug.
+Go-Taskmaster isn't just basic ticketing automation. It eliminates the 15–30 minute operational lag of manual triage and walk-up requests:
 
-## Architecture of the 5-agent pipeline
+- **Instant Triage:** Drops initial response time to sub-two seconds.
+- **Targeted Troubleshooting:** Generates intelligent, empathetic replies with specific diagnostic questions (e.g., switch light states, affected user count).
+- **Enterprise Safety:** Staged responses support human-in-the-loop verification before client dispatch.
 
-Each agent normalizes, enriches, and passes state to the next.
+---
+
+## Architecture of the 5-Agent Pipeline
+
+Each agent normalizes, enriches, and validates structured state using Pydantic v2 before passing it down the pipeline.
 
 ```mermaid
 flowchart LR
@@ -57,117 +56,95 @@ flowchart LR
     C --> D[✉️ Reply Agent]
     D --> E[📅 Scheduler Agent]
 
-    A -.->|normalizes every channel<br/>audio, into one schema| A
-    B -.->|Gemini 3.5 NLU vs. the<br/>active vertical's taxonomy| B
-    C -.->|writes to Firestore,<br/>links customer history| C
-    D -.->|tone/language-matched<br/>reply, ≤3 questions| D
-    E -.->|checks Google Calendar,<br/>confirms a slot| E
+    A -.->|Normalizes message & contact info| A
+    B -.->|Gemini 3.5 NLU vs. vertical taxonomy| B
+    C -.->|Atomic Firestore ticket creation| C
+    D -.->|Empathetic reply + diagnostic Qs| D
+    E -.->|Google Calendar slot validation| E
+
 ```
 
-| #   | Agent          | Responsibility                                                                                                                                                                                                                                                                                        |
-| --- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Intake**     | Normalizes messages from every channel (including audio) into one internal schema; detects language; extracts sender name, email, phone, company; assigns `intake_id` + timestamp.                                                                                                                    |
-| 2   | **Classifier** | The core. Uses **Gemini 3.5** for deep NLU of messy, incoherent, angry, multilingual, half-finished messages. Outputs `issue_type` and `urgency` from the **active vertical's taxonomy**, extracted entities, missing critical info, a sentiment/frustration read, and a calibrated confidence score. |
-| 3   | **Ticket**     | Builds the structured ticket, assigns number/priority/category/status, writes to Firestore, links customer history, routes to the right person.                                                                                                                                                       |
-| 4   | **Reply**      | Writes the customer reply, matching their language, tone, and emotional state. Complete info → confirmation + ticket number + expected response time. Missing info → at most 3 targeted questions. Never generic.                                                                                     |
-| 5   | **Scheduler**  | Decides if an appointment is needed, checks availability via native Google Calendar integration, proposes slots, confirms, blocks the slot, sets status to `Scheduled`.                                                                                                                               |
+| #   | Agent          | Responsibility                                                                                                                                                    | Output Artifact     |
+| --- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| 1   | **Intake**     | Normalizes incoming payloads/transcripts across all channels into a single schema; extracts customer identity.                                                    | `NormalizedMessage` |
+| 2   | **Classifier** | Leverages **Gemini 3.5 Flash** for deep intent classification, urgency grading (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), sentiment analysis, and confidence scoring. | `Classification`    |
+| 3   | **Ticket**     | Atomically fetches sequential counters (`#TK-0046`), assigns technical roles, and persists records to **Cloud Firestore**.                                        | `Ticket`            |
+| 4   | **Reply**      | Formulates empathetic, context-matched customer drafts with up to 3 targeted diagnostic questions.                                                                | `ReplyDraft`        |
+| 5   | **Scheduler**  | Analyzes calendar constraints, proposes meeting windows, and determines whether dispatch is required.                                                             | `Appointment`       |
 
-## Vertical-agnostic by design
+---
 
-Four complete vertical config packs ship today in [`backend/app/verticals/packs/`](backend/app/verticals/packs):
+## Vertical-Agnostic by Design
 
-| Vertical              | Flagship | "Urgent" means                                                    |
-| --------------------- | :------: | ----------------------------------------------------------------- |
-| `it_support`          | ✅ demo  | Business down — a whole site or multiple users can't work         |
-| `dental_clinic`       |          | Active severe pain, swelling, or dental trauma                    |
-| `home_services`       |          | Active leak, no heat, no power, or an electrical hazard           |
-| `property_management` |          | No heat/AC in extreme weather, no water, gas smell, safety hazard |
+Four complete vertical configuration packs ship ready in [`backend/app/verticals/packs/`](https://www.google.com/search?q=backend/app/verticals/packs):
 
-Each pack defines its own issue-type taxonomy, urgency definitions, required entities, appointment
-types, reply tone, business hours/timezone, SLAs by priority, and routing rules — all data, no
-code. Swapping `ACTIVE_VERTICAL` in config changes everything the pipeline classifies, replies, and
-routes against.
+| Vertical              | Mode              | "Urgent" Definition                                           |
+| --------------------- | ----------------- | ------------------------------------------------------------- |
+| `it_support`          | **Flagship Demo** | Complete business outage, down switch/firewall, site offline  |
+| `dental_clinic`       | Ready             | Severe acute pain, active bleeding, facial trauma             |
+| `home_services`       | Ready             | Active water leak, gas smell, electrical hazard, loss of heat |
+| `property_management` | Ready             | Structural damage, flooding, no heat/AC in extreme weather    |
 
-## Channels
+---
 
-Email (Gmail/Outlook), SMS (Twilio), web form, Slack, and **voice** — customers can speak their
-problem instead of typing it. Voice is a first-class channel, not an afterthought.
+## Tech Stack & Google Cloud Architecture
 
-## Tech stack
+- **AI Reasoning:** Gemini 3.5 Flash via Google GenAI SDK (`google-genai`) on Gemini Enterprise Agent Platform
+- **Backend:** Python 3.11, FastAPI, Uvicorn, Pydantic v2
+- **Database & Persistence:** Google Cloud Firestore (NoSQL state, atomic counters, customer history)
+- **Compute & Ingestion:** Google Cloud Run (serverless containerized runtime), Cloud Pub/Sub
+- **Security:** Google Secret Manager (`GEMINI_API_KEY`)
+- **Frontend & Hosting:** React 18, Vite, Tailwind CSS, Lucide Icons, Firebase Hosting
 
-- **Backend**: Python 3.11, FastAPI (async), Google ADK for agent orchestration
-- **AI**: Gemini 3.5 for all LLM reasoning and audio understanding
-- **Data**: Google Firestore
-- **Integrations**: native Google Calendar API, Gmail API, Twilio (SMS + voice)
-- **Deploy**: Google Cloud Run
-- **Frontend**: React + Vite + Tailwind CSS dashboard
+---
 
-## Project status
+## Project Status
 
-Built so far, all tested:
+- ✅ **Shared Models (`app/models/`):** Strict Pydantic v2 schema validation contracts.
+- ✅ **5-Agent Pipeline (`app/agents/`):** Full end-to-end multi-agent orchestration using Gemini 3.5 Flash.
+- ✅ **Persistence Engine (`app/services/`):** Production `FirestoreRepo` with atomic counter transactions and zero-dependency `InMemoryRepo` for local development.
+- ✅ **Vertical Config Engine (`app/verticals/`):** 4 active industry packs with customized taxonomies.
+- ✅ **Cloud Infrastructure:** Deployed and serving live on Google Cloud Run and Firebase Hosting.
+- ✅ **Live Web Visualizer (`frontend/`):** Split-screen dashboard with preset simulations and real-time execution trace logs.
+- 🟡 **External Calendar Provider Sync:** Scheduler Agent evaluates slot necessity, constraints, and booking intent autonomously; live 2-way Google Calendar OAuth sync is architected for post-hackathon release.
 
-- ✅ `app/models/` — the Pydantic v2 contract shared by all 5 agents (`NormalizedMessage`,
-  `Classification`, `Ticket`/`TicketDraft`, `ReplyDraft`, `Appointment`, `PipelineState`, `Customer`)
-- ✅ `app/verticals/` — the vertical config system + 4 complete packs
-- ✅ `app/services/` — async `TicketRepository` (Firestore-backed, with a full in-memory twin for
-  local dev/tests) covering ticket CRUD, customer lookup/history, and pipeline-run persistence
-- ✅ `app/main.py` — FastAPI app skeleton with structured logging, request tracing, `/health`
-- ✅ `app/core/timing.py` — per-stage timing + live event bus (the sub-30-second claim is
-  measurable, not just asserted)
-- 🚧 The 5 agents themselves (`app/agents/`) — not yet implemented
-- 🚧 Channel adapters (`app/channels/`) — not yet implemented
-- 🚧 Google/Twilio integration clients (`app/integrations/`) — not yet implemented
-- ✅ Frontend dashboard scaffold (React/Vite/Tailwind) — split-screen visualizer + ticket summary
-  components in place
+---
 
-See [`GEMINI.md`](GEMINI.md) for the full target architecture and engineering rules this repo
-follows.
-
-## Repository structure
+## Repository Structure
 
 ```
 taskmaster/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py, config.py            # FastAPI app + typed, fail-loud settings
-│   │   ├── core/timing.py                # per-stage timing + event bus
-│   │   ├── models/                       # the 5-agent contract (Pydantic v2)
-│   │   ├── verticals/                    # vertical config schema, loader, and packs
-│   │   ├── services/                     # TicketRepository (Firestore + in-memory)
-│   │   ├── agents/                       # 5-stage pipeline modules
-│   │   ├── channels/                     # ingestion adapters
-│   │   └── api/routes/                   # endpoints (/api/simulate, webhooks)
-│   ├── tests/                            # pytest suite (100% green against InMemoryRepo)
+│   │   ├── main.py, config.py            # FastAPI entrypoint + fail-loud typed settings
+│   │   ├── core/timing.py                # Per-stage execution timer + live trace bus
+│   │   ├── models/                       # Pydantic v2 contracts (Ticket, Message, etc.)
+│   │   ├── verticals/                    # Vertical config schemas, loader, and packs
+│   │   ├── services/                     # FirestoreRepo + InMemoryRepo implementations
+│   │   ├── agents/                       # 5-stage agent modules (Intake, Classifier, Ticket, Reply, Scheduler)
+│   │   ├── integrations/                 # Gemini GenAI client and cloud adapters
+│   │   └── api/routes/                   # Live endpoints (/api/simulate, webhooks)
+│   ├── tests/                            # Pytest test suite (100% green against InMemoryRepo)
 │   └── pyproject.toml
-├── frontend/                             # React + Vite + Tailwind dashboard
-├── docs/                                 # PRD, architecture notes, demo script, structure
-├── GEMINI.md                             # full project context — read this first
-└── docker-compose.yml                    # run backend + frontend together
+├── frontend/                             # React 18 + Vite + Tailwind CSS dashboard
+├── docs/                                 # PRD, architecture blueprints, demo flow
+├── GEMINI.md                             # Architectural specification & engineering rules
+└── docker-compose.yml                    # Local multi-container development configuration
+
 ```
 
-## Getting started
+---
+
+## Getting Started
 
 ### Backend
-
-**macOS / Linux (Bash):**
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate    # On Windows: .venv\Scripts\Activate.ps1
 pip install -e .
 cp .env.example .env
-uvicorn app.main:app --reload --port 8000
-```
-
-**Windows (PowerShell):**
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
-Copy-Item .env.example .env
 uvicorn app.main:app --reload --port 8000
 
 ```
@@ -182,50 +159,31 @@ npm install
 npm run dev
 ```
 
-### Docker Compose (both at once)
+### Docker Compose (Both at once)
 
 ```bash
 docker compose up
 ```
 
-Backend on `:8000`, frontend on `:5173`. Uses `backend/.env` for backend config (see
-[`docker-compose.yml`](docker-compose.yml)).
+Backend accessible on `:8000`, frontend on `:5173`.
 
-## Environment variables
+---
 
-All documented with comments in [`backend/.env.example`](backend/.env.example) — copy it to
-`backend/.env` and fill in real values. The app **fails loudly at startup** if a required variable
-is missing, rather than running with silently broken config.
-
-Required: `GEMINI_API_KEY`, `GCP_PROJECT_ID`, `ACTIVE_VERTICAL`. Everything else (Gmail, Twilio,
-Calendar, `AUTO_SEND_REPLIES`, etc.) is optional until you're wiring up that specific integration.
-Set `ENV=local` to run the whole pipeline — repository included — with **zero GCP credentials**.
-
-## Running tests
+## Running Tests
 
 ```bash
 cd backend
 pytest
+
 ```
 
-All repository tests run entirely against the in-memory repo, so the full suite needs no GCP
-credentials either.
-
-## Documentation
-
-- [`GEMINI.md`](GEMINI.md) — full project context: product, architecture, engineering rules, and
-  the target folder structure. Read this first in any new session.
-- [`docs/prd.md`](docs/prd.md) — product requirements and user stories
-- [`docs/architecture_notes.md`](docs/architecture_notes.md) — infra/deployment notes
-- [`docs/demo_flow.md`](docs/demo_flow.md) — hackathon demo script
+---
 
 ## Team
 
 Built for the **All Things Agentic Hackathon 2026**:
 
-- **Morgan King** – Project Lead & Technical Architect
-- **Dr. Agentic** – AI Core & Google ADK Agent Orchestration
-- **Asmae** – FastAPI Routes & Cloud Pub/Sub Ingestion
-- **Ashvin** – Frontend Visualizer & React State Management
-- **Habib Ur Rahman** – Ticket Persistence & External Integrations
+- **Morgan King** – System Architecture, Cloud Infrastructure & Lead Developer
+- **Habib Ur Rahman** – Agent Pipeline Engineering & Backend Routing
 - **Michael Pereira** – QA, Test Engineering & Reliability
+- **Ashvin Kumar** – Frontend Dashboard & Interface Integration

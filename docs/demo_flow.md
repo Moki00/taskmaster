@@ -1,63 +1,24 @@
-# Taskmaster: Demo Flow & Presentation Script
+### Taskmaster: Demo Flow & Video Recording Blueprint
 
-This document outlines the step-by-step walkthrough and video presentation script for demonstrating Taskmaster's autonomous triage and dispatch capabilities.
-
----
-
-## 1. Quick Video Script (3-Minute Hackathon Demo)
-
-| Timestamp       | Video Screen                               | Narration Script                                                                                                                                                                                                                                                                                                                                                      |
-| :-------------- | :----------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0:00 – 0:30** | Split-screen UI                            | _"Small IT providers face constant context switching: urgent text messages, panic emails, and calendar scheduling requests arriving simultaneously. Taskmaster is an autonomous event coordinator powered by Gemini 3.5 Flash and Google ADK that ingests messy communications and takes immediate operational action."_                                              |
-| **0:30 – 1:15** | Client Simulator (Left Panel)              | _"Let's simulate an inbound emergency from a client: 'Our main switch is down and the office network is completely dead! Clients arrive in 20 minutes!' As we trigger this inbound payload, the backend receives the event via Cloud Pub/Sub and passes it to our ADK Router Agent."_                                                                                 |
-| **1:15 – 2:00** | Extraction & Execution Trace (Right Panel) | _"Notice what happens instantly on the right: Gemini extracts structured metadata—marking Urgency as Critical and Categorizing it under Network Infrastructure. Simultaneously, the Agent triggers two autonomous tools: `create_support_ticket` to generate Ticket #1042 in our CRM, and `stage_sms_reply` with an immediate power-cycle checklist for the client."_ |
-| **2:00 – 2:30** | Second Scenario (Consultation Request)     | _"Now let's test a non-urgent scenario: 'Looking to get a quote on setting up a new mesh Wi-Fi network.' The agent detects a low-urgency sales request, avoids emergency alerts, and automatically invokes `check_schedule_and_draft_slot` to propose calendar windows."_                                                                                             |
-| **2:30 – 3:00** | Architecture / Cloud Run Overview          | _"Taskmaster runs containerized on Google Cloud Run, scaling to zero when idle, using the Google GenAI SDK for low-latency JSON schema enforcement. Thank you!"_                                                                                                                                                                                                      |
+This updated script aligns with the strict **Google Cloud proof requirement** (showing Cloud Run console, logs, or `.run.app` live endpoint), your actual **5-stage pipeline architecture**, and the real-world **IT owner walk-up / unscheduled request** hook.
 
 ---
 
-## 2. Test Scenarios for Reproducible Evaluation
+### Video Timing & Stage Progression (Under 4:00 Target)
 
-### Scenario A: Critical Network Outage
-
-- **Inbound Message:** `"Our main switch is down and the office network is completely dead! We have clients arriving in 20 minutes!"`
-- **Expected Agent Output:**
-  - **Category:** `Network / Infrastructure`
-  - **Urgency:** `Critical / High`
-  - **Triggered Tools:** `create_support_ticket(priority='High')`, `stage_sms_reply(...)`
-
-### Scenario B: Routine Scheduling & Consultation
-
-- **Inbound Message:** `"Hi Morgan, we are expanding our office next month and want to discuss setting up 10 new workstations. Can we meet Tuesday afternoon?"`
-- **Expected Agent Output:**
-  - **Category:** `Consultation / Deployment`
-  - **Urgency:** `Standard Priority`
-  - **Triggered Tools:** `check_schedule_and_draft_slot(preferred_time='Tuesday afternoon')`, `stage_sms_reply(...)`
-
-### Scenario C: General Inquiry / Peripheral Support
-
-- **Inbound Message:** `"My monitor is flickering intermittently after the Windows update. Any quick fix?"`
-- **Expected Agent Output:**
-  - **Category:** `Workstation / OS Support`
-  - **Urgency:** `Low / Standard`
-  - **Triggered Tools:** `stage_sms_reply(reply_body='Driver update & cable reseat checklist...')`
+| Timestamp       | Video Focus                                                           | Narration & Action                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0:00 – 0:40** | **The Hook & Problem** (Slide / Camera)                               | _"As a small IT service provider, I constantly get walk-ups, urgent texts, and emails without a ticket. Someone walks up and says, 'Hey, can you fix this real quick?' That context-switching creates a 20-minute operational lag. We built Taskmaster: an autonomous event coordinator that converts unstructured requests into structured CRM tickets, calendar bookings, and diagnostic reply drafts."_ |
+| **0:40 – 1:15** | **Architecture & Tech** (Blueprint Diagram)                           | _"Taskmaster runs on Google Cloud using Gemini 3.5 Flash via the Google GenAI SDK. Inbound events from SMS, email, or webhooks trigger our 5-agent pipeline on Cloud Run: Intake, Classifier, Ticket, Reply, and Scheduler—persisting all states to Cloud Firestore."_                                                                                                                                     |
+| **1:15 – 2:30** | **Live Demo: Critical Outage** (Dashboard: `go-taskmaster-1.web.app`) | Click the **Panic / Network Outage** preset (_"Our primary switch is dead and office Wi-Fi dropped"_). Point out the live trace executing in sub-2 seconds: Classifier flags `network` / `CRITICAL`, Ticket Agent issues sequential Firestore ticket `#TK-0046`, and Reply Agent drafts a targeted questionnaire.                                                                                          |
+| **2:30 – 3:15** | **Live Demo: Routine Inquiry & Calendar** (Dashboard)                 | Click the **Routine Inquiry** preset (_"Looking for a quote on a mesh Wi-Fi setup"_). Show how the Classifier downgrades priority, skips emergency escalations, and the Scheduler Agent evaluates calendar windows.                                                                                                                                                                                        |
+| **3:15 – 3:45** | **Google Cloud Verification** (GCP Console / Cloud Run)               | **Mandatory:** Tab over to the Google Cloud Console showing the `taskmaster-backend` service in `hackathon8-20`, the `us-east1.run.app` service URL, and real-time container revision logs.                                                                                                                                                                                                                |
+| **3:45 – 4:00** | **Value Proposition & Wrap-Up** (Closing Slide)                       | _"Taskmaster cuts initial response time from 30 minutes to under two seconds while maintaining human-in-the-loop safety controls. Built for MSPs and service businesses to stay organized and responsive."_                                                                                                                                                                                                |
 
 ---
 
-## 3. Local Live Demo Instructions
+### Checklist Before Uploading
 
-1. **Start Backend:**
-
-   ```bash
-   cd backend
-   uvicorn src.main:app --reload --port 8000
-   ```
-
-2. **Start Frontend:**
-
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-3. Open `http://localhost:5173`, select any preset scenario on the left panel, and click **Simulate Incoming Request** to view real-time triage extraction and agent tool traces.
+- **Visibility Setting:** Must be set to **Public** on YouTube (never Unlisted or Private).
+- **GCP Proof Included:** Ensure the Cloud Run dashboard, Cloud Shell, or GCP console is visibly displayed on screen for at least 15–30 seconds.
+- **Audio Check:** Confirm voice audio is clean and background noise is minimal.
